@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -65,10 +66,7 @@ const PROTECTABLE_MODULES: { id: UserModule, label: string }[] = [
     { id: 'pos', label: 'Punto de Venta' },
     { id: 'repairs', label: 'Reparaciones' },
     { id: 'fiados', label: 'Fiados / Créditos' },
-    { id: 'payroll', label: 'Registro de Pago' },
-    { id: 'exchange', label: 'Cambio de Divisa' },
     { id: 'loans', label: 'Préstamos' },
-    { id: 'treasury', label: 'Tesorería' },
     { id: 'reports', label: 'Reportes Financieros' },
     { id: 'analysis', label: 'Análisis de Negocio' },
 ];
@@ -149,7 +147,7 @@ function SettingsContent() {
 
     const availableProtectableModules = useMemo(() => {
         if (!profile) return [];
-        const enabled = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll', 'treasury', 'loans', 'exchange'];
+        const enabled = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'loans'];
         return PROTECTABLE_MODULES.filter(m => enabled.includes(m.id));
     }, [profile]);
 
@@ -194,7 +192,7 @@ function SettingsContent() {
                 repairDisclaimer: (profile.repairDisclaimer || "NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS...").toUpperCase()
             });
             setIsPinRequired(profile.isPinRequired !== false);
-            setLockedModules(profile.lockedModules || ['treasury', 'reports', 'analysis', 'loans', 'exchange', 'payroll']);
+            setLockedModules(profile.lockedModules || ['reports', 'analysis', 'loans']);
         }
     }, [profile, profileForm]);
 

@@ -173,7 +173,7 @@ export type Expense = {
   createdAt: string;
 };
 
-export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis' | 'fiados' | 'inventory_aging' | 'payroll' | 'treasury' | 'loans' | 'exchange';
+export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis' | 'fiados' | 'inventory_aging' | 'loans';
 
 export type CartItem = {
   productId: string;

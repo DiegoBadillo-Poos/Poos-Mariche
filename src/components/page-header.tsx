@@ -1,3 +1,4 @@
+"use client";
 
 import type { ReactNode } from 'react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -10,14 +11,14 @@ type PageHeaderProps = {
 
 export function PageHeader({ title, children }: PageHeaderProps) {
   return (
-    <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-sm">
-      <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          <SidebarTrigger />
-          <h1 className="truncate text-lg font-semibold md:text-xl">{title}</h1>
+    <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur-md">
+      <div className="flex h-14 sm:h-16 items-center justify-between gap-2 px-3 sm:px-6">
+        <div className="flex flex-1 items-center gap-2 sm:gap-4 min-w-0">
+          <SidebarTrigger className="shrink-0" />
+          <h1 className="truncate text-base sm:text-lg md:text-xl font-bold tracking-tight text-slate-800">{title}</h1>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {children}
         </div>
       </div>

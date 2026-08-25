@@ -2,7 +2,7 @@
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import type { RepairJob, RepairStatus, UserProfile, Product, ReservedPart } from "@/lib/types"
+import type { RepairJob, RepairStatus, UserProfile, Product, ReservedPart, Sale } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Edit, Trash2, DollarSign, Printer, Eye, ArrowUpDown, Tag, Files, ShieldCheck, RefreshCcw, Loader2 } from "lucide-react"
+import { MoreHorizontal, Edit, Trash2, DollarSign, Printer, ArrowUpDown, Loader2, History, Clock } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -20,25 +20,157 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { format, parseISO, addDays, isAfter, differenceInDays } from "date-fns"
+import { format, parseISO, addDays, differenceInMinutes, differenceInHours, differenceInDays } from "date-fns"
 import { es } from "date-fns/locale"
 import { useCurrency } from "@/hooks/use-currency"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
-import { useFirebase, updateDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase"
-import { doc, runTransaction, type DocumentSnapshot } from "firebase/firestore"
-import { handlePrintCustomerTicket, handlePrintInternalTicket, handlePrintStickerTicket, handlePrintAllTickets } from "./repair-ticket"
+import { useFirebase, useDoc, useMemoFirebase, useCollection } from "@/firebase"
+import { doc, runTransaction, type DocumentSnapshot, collection, query, where, getDoc } from "firebase/firestore"
+import { handlePrintAllTickets } from "./repair-ticket"
 import { AdminAuthDialog } from "../admin-auth-dialog"
-import { useState } from "react"
+import { useState, type ReactNode, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { RepairFormDialog } from "./repair-form-dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog"
 
 const repairStatuses: RepairStatus[] = ['Pendiente', 'Pagado', 'Completado', 'Garantía'];
+
+function ServiceTimer({ createdAt, completedAt, status }: { createdAt: string, completedAt?: string, status: RepairStatus }) {
+    const [duration, setDuration] = useState("");
+
+    useEffect(() => {
+        const calculateDuration = () => {
+            const start = parseISO(createdAt);
+            const end = (status === 'Completado' && completedAt) ? parseISO(completedAt) : new Date();
+            
+            const days = differenceInDays(end, start);
+            const hours = differenceInHours(end, start) % 24;
+            const minutes = differenceInMinutes(end, start) % 60;
+
+            let result = "";
+            if (days > 0) result += `${days}d `;
+            if (hours > 0 || days > 0) result += `${hours}h `;
+            result += `${minutes}m`;
+            
+            setDuration(result);
+        };
+
+        calculateDuration();
+
+        if (status !== 'Completado') {
+            const interval = setInterval(calculateDuration, 60000);
+            return () => clearInterval(interval);
+        }
+    }, [createdAt, completedAt, status]);
+
+    return (
+        <div className={cn(
+            "flex items-center gap-1.5 font-mono text-[10px] font-bold px-2 py-0.5 rounded-full border w-fit mx-auto",
+            status === 'Completado' 
+                ? "bg-slate-100 text-slate-500 border-slate-200" 
+                : "bg-blue-50 text-blue-600 border-blue-100 animate-pulse"
+        )}>
+            <Clock className="w-3 h-3" />
+            {duration || "0m"}
+        </div>
+    );
+}
+
+function RepairHistoryDialog({ repairJob, children }: { repairJob: RepairJob, children: ReactNode }) {
+  const { firestore, user } = useFirebase();
+  const [open, setOpen] = useState(false);
+  const { format: formatCurrency } = useCurrency();
+  
+  const salesQuery = useMemoFirebase(() => {
+    if (!firestore || !user || !repairJob.id || !open) return null;
+    return query(
+      collection(firestore, "users", user.uid, "sale_transactions"),
+      where("repairJobId", "==", repairJob.id)
+    );
+  }, [firestore, user?.uid, repairJob.id, open]);
+
+  const { data: rawSales, isLoading } = useCollection<Sale>(salesQuery);
+  
+  const sales = (rawSales || []).sort((a, b) => 
+    (a.transactionDate || "").localeCompare(b.transactionDate || "")
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="uppercase font-black flex items-center gap-2">
+            <History className="w-5 h-5 text-primary" /> Historial del Trabajo
+          </DialogTitle>
+          <DialogDescription className="font-bold text-slate-600">
+            {repairJob.id} — {repairJob.deviceMake} {repairJob.deviceModel}
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="py-6 max-h-[60vh] overflow-y-auto">
+          <div className="relative pl-8 border-l-2 border-slate-200 ml-4 space-y-8">
+            <div className="relative">
+              <div className="absolute -left-[41px] top-0.5 w-5 h-5 rounded-full bg-primary border-4 border-white shadow-md" />
+              <div className="space-y-1">
+                <p className="text-[10px] font-black uppercase text-primary tracking-widest">Ingreso al Taller</p>
+                <p className="text-xs font-bold text-slate-800">
+                  {repairJob.createdAt ? format(parseISO(repairJob.createdAt), "dd/MM/yyyy — hh:mm:ss a", { locale: es }) : 'N/A'}
+                </p>
+              </div>
+            </div>
+
+            {isLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Sincronizando cobros...</span>
+                </div>
+            ) : sales.length > 0 ? (
+              sales.map((sale) => (
+                <div key={sale.id} className="relative">
+                  <div className="absolute -left-[41px] top-0.5 w-5 h-5 rounded-full bg-green-500 border-4 border-white shadow-md" />
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black uppercase text-green-600 tracking-widest">Abono / Pago Recibido</p>
+                    <p className="text-xs font-bold text-slate-800">
+                      {sale.transactionDate ? format(parseISO(sale.transactionDate), "dd/MM/yyyy — hh:mm:ss a", { locale: es }) : 'N/A'}
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <span className="text-base font-black text-slate-900">${formatCurrency(sale.actualPaidAmount || sale.totalAmount)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : null}
+
+            {repairJob.completedAt && (
+                <div className="relative">
+                    <div className="absolute -left-[41px] top-0.5 w-5 h-5 rounded-full bg-blue-600 border-4 border-white shadow-md" />
+                    <div className="space-y-1">
+                        <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Trabajo Finalizado</p>
+                        <p className="text-xs font-bold text-slate-800">
+                            {format(parseISO(repairJob.completedAt), "dd/MM/yyyy — hh:mm:ss a", { locale: es })}
+                        </p>
+                    </div>
+                </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className="bg-slate-50 -mx-6 -mb-6 p-6 border-t">
+            <div className="w-full flex justify-between items-center">
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-tighter">Acumulado Abonado</span>
+                <span className="text-2xl font-black text-green-600">${formatCurrency(repairJob.amountPaid || 0)}</span>
+            </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     const { toast } = useToast();
@@ -56,26 +188,10 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     const estimatedCost = repairJob.estimatedCost || 0;
     const amountPaid = repairJob.amountPaid || 0;
     const remainingBalance = estimatedCost - amountPaid;
-    const isCompleted = repairJob.status === 'Completado';
-    const isCompletedAndPaid = isCompleted && repairJob.isPaid;
 
     const handlePay = () => {
         const repairData = encodeURIComponent(JSON.stringify(repairJob));
         router.push(`/dashboard/pos?repairJob=${repairData}`);
-    };
-
-    const handleReenterForWarranty = () => {
-        if (!firestore || !user || !repairJob.id) return;
-        const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id);
-        updateDocumentNonBlocking(jobRef, {
-            status: 'Garantía',
-            completedAt: null,
-            warrantyEndDate: null,
-        });
-        toast({ 
-            title: "Reingreso por Garantía", 
-            description: "El trabajo ha sido reactivado para revisión técnica.",
-        });
     };
 
     const handleDelete = async () => {
@@ -128,38 +244,14 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                 transaction.delete(jobRef);
             });
 
-            toast({
-                title: "Trabajo Eliminado",
-                description: `El registro de ${repairJob.customerName} ha sido borrado.`,
-                variant: "destructive"
-            });
-
+            toast({ title: "Trabajo Eliminado", variant: "destructive" });
         } catch (error: any) {
-             console.error("Delete Error:", error);
              toast({ title: "Error", description: "No se pudo eliminar.", variant: "destructive" });
         } finally {
             setIsDeleteDialogOpen(false);
         }
     }
     
-    const onPrintCustomer = () => {
-        handlePrintCustomerTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
-             toast({ variant: "destructive", title: "Error", description: error })
-        });
-    }
-
-    const onPrintInternal = () => {
-        handlePrintInternalTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
-             toast({ variant: "destructive", title: "Error", description: error })
-        });
-    }
-
-    const onPrintSticker = () => {
-        handlePrintStickerTicket({ repairJob, profile }, (error) => {
-             toast({ variant: "destructive", title: "Error", description: error })
-        });
-    }
-
     const onPrintAll = () => {
         handlePrintAllTickets({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
              toast({ variant: "destructive", title: "Error", description: error })
@@ -179,42 +271,30 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                     
                     {remainingBalance > 0.001 && !repairJob.isPaid && (
-                         <DropdownMenuItem onSelect={handlePay} className="text-green-600 focus:text-green-700">
+                         <DropdownMenuItem onSelect={handlePay} className="text-green-600 font-bold">
                             <DollarSign className="mr-2 h-4 w-4" />
-                            Cobrar
+                            Cobrar Saldo
                         </DropdownMenuItem>
                     )}
 
-                    {isCompleted && (
-                        <DropdownMenuItem onSelect={handleReenterForWarranty} className="text-amber-600 focus:text-amber-700">
-                            <RefreshCcw className="mr-2 h-4 w-4" />
-                            Reingresar por Garantía
+                    <RepairHistoryDialog repairJob={repairJob}>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                            <History className="mr-2 h-4 w-4" />
+                            Ver Historial
                         </DropdownMenuItem>
-                    )}
-                    
+                    </RepairHistoryDialog>
+
                     <RepairFormDialog repairJob={repairJob}>
                         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                             {isCompletedAndPaid ? <Eye className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />}
-                            {isCompletedAndPaid ? 'Ver Detalles' : 'Editar / Ver Detalles'}
+                             <Edit className="mr-2 h-4 w-4" />
+                            Editar / Detalles
                         </DropdownMenuItem>
                     </RepairFormDialog>
                     
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={onPrintAll}>
-                        <Files className="mr-2 h-4 w-4" />
-                        Imprimir Todo (3 tickets)
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={onPrintCustomer}>
                         <Printer className="mr-2 h-4 w-4" />
-                        Imprimir Nota Cliente
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={onPrintInternal}>
-                        <Printer className="mr-2 h-4 w-4" />
-                        Imprimir Control Interno
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={onPrintSticker}>
-                        <Tag className="mr-2 h-4 w-4" />
-                        Imprimir Etiqueta
+                        Imprimir Tickets
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator />
@@ -230,12 +310,11 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
              <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                    <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                    <AlertDialogDescription>Esto eliminará el trabajo y devolverá las piezas al stock.</AlertDialogDescription>
+                    <AlertDialogTitle>¿Eliminar este trabajo?</AlertDialogTitle>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                    <AlertDialogAction onClick={handleDelete} className="bg-destructive">Eliminar</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
              </AlertDialog>
@@ -262,24 +341,13 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
                 const reservedParts = jobData.reservedParts || [];
                 const currentConsumed = jobData.consumedParts || [];
 
-                const productIds = Array.from(new Set(reservedParts.map(p => p.productId)));
-                const productSnaps = new Map<string, DocumentSnapshot>();
-                
-                if (newStatus === 'Completado' && reservedParts.length > 0) {
-                    for (const pid of productIds) {
-                        const productRef = doc(firestore, 'users', user.uid, 'products', pid);
-                        const pSnap = await transaction.get(productRef);
-                        productSnaps.set(pid, pSnap);
-                    }
-                }
-
                 let updateData: Partial<RepairJob> = { status: newStatus };
 
                 if (newStatus === 'Completado') {
                     for (const part of reservedParts) {
                         if (part.isManual) continue;
-                        const pSnap = productSnaps.get(part.productId);
-                        if (pSnap?.exists()) {
+                        const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', part.productId));
+                        if (pSnap.exists()) {
                             const pData = pSnap.data() as Product;
                             transaction.update(pSnap.ref, {
                                 stockLevel: (pData.stockLevel || 0) - part.quantity,
@@ -301,7 +369,6 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
 
             toast({ title: 'Estado Actualizado' });
         } catch (e: any) {
-            console.error("Status Change Error:", e);
             toast({ variant: "destructive", title: "Error", description: e.message });
         } finally {
             setIsUpdating(false);
@@ -328,13 +395,7 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
     if (status === 'Completado') {
         return (
             <div className="flex flex-col items-center gap-1">
-                <Badge variant={badgeVariant} className={cn(badgeClassName)}>{repairJob.isPaid ? 'Entregado y Pagado' : 'Entregado'}</Badge>
-                {repairJob.warrantyEndDate && isAfter(parseISO(repairJob.warrantyEndDate), new Date()) && (
-                    <Badge variant="outline" className="text-[9px] border-blue-200 text-blue-600 bg-blue-50 py-0 flex items-center gap-1 font-black">
-                        <ShieldCheck className="w-2.5 h-2.5" />
-                        GARANTÍA: {differenceInDays(parseISO(repairJob.warrantyEndDate), new Date())}D
-                    </Badge>
-                )}
+                <Badge variant={badgeVariant} className={cn(badgeClassName)}>ENTREGADO</Badge>
             </div>
         );
     }
@@ -345,12 +406,12 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
             <Select value={repairJob.status} onValueChange={handleStatusChange} disabled={repairJob.status === 'Completado' || isUpdating}>
                 <SelectTrigger className="w-48 border-0 bg-transparent shadow-none focus:ring-0">
                     <SelectValue asChild>
-                         <Badge variant={badgeVariant} className={cn(badgeClassName, "cursor-pointer")}>{repairJob.status === 'Garantía' ? 'REINGRESO GARANTÍA' : repairJob.status}</Badge>
+                         <Badge variant={badgeVariant} className={cn(badgeClassName, "cursor-pointer")}>{repairJob.status}</Badge>
                     </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                     {repairStatuses.map(s => (
-                        <SelectItem key={s} value={s}>{s === 'Garantía' ? 'REINGRESO POR GARANTÍA' : s}</SelectItem>
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
                     ))}
                 </SelectContent>
             </Select>
@@ -361,8 +422,8 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
 export const columns: ColumnDef<RepairJob>[] = [
   {
     accessorKey: "id",
-    header: "ID de Trabajo",
-    cell: ({ row }) => <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>,
+    header: "ID",
+    cell: ({ row }) => <div className="font-mono text-[10px] text-muted-foreground">{row.original.id}</div>,
   },
   {
     accessorKey: "customerName",
@@ -372,12 +433,12 @@ export const columns: ColumnDef<RepairJob>[] = [
         <ArrowUpDown className="ml-2 h-4 w-4" />
       </Button>
     ),
-    cell: ({ row }) => <div className="font-medium uppercase">{row.getValue("customerName")}</div>
+    cell: ({ row }) => <div className="font-medium uppercase text-xs">{row.getValue("customerName")}</div>
   },
   {
     accessorKey: "device",
     header: "Dispositivo",
-    cell: ({ row }) => <span className="uppercase">{row.original.deviceMake} {row.original.deviceModel}</span>,
+    cell: ({ row }) => <span className="uppercase text-xs">{row.original.deviceMake} {row.original.deviceModel}</span>,
   },
   {
     accessorKey: "status",
@@ -385,21 +446,23 @@ export const columns: ColumnDef<RepairJob>[] = [
     cell: ({ row }) => <StatusCell repairJob={row.original} />,
   },
   {
-    accessorKey: "createdAt",
-    header: "Fecha de Registro",
-    cell: ({ row }) => {
-        if (!row.getValue("createdAt")) return null;
-        const date = parseISO(row.getValue("createdAt") as string);
-        return <div>{format(date, 'MMM d, yyyy', { locale: es })}</div>
-    }
+    id: "timer",
+    header: () => <div className="text-center">Duración</div>,
+    cell: ({ row }) => (
+        <ServiceTimer 
+            createdAt={row.original.createdAt} 
+            completedAt={row.original.completedAt} 
+            status={row.original.status} 
+        />
+    )
   },
   {
     accessorKey: "estimatedCost",
-    header: () => <div className="text-right">Costo Estimado</div>,
+    header: () => <div className="text-right">Total</div>,
     cell: function Cell({ row }) {
       const { format, getSymbol } = useCurrency();
       const amount = parseFloat(row.getValue("estimatedCost"))
-      return <div className="text-right font-medium">{getSymbol()}{format(amount)}</div>
+      return <div className="text-right font-black text-xs">{getSymbol()}{format(amount)}</div>
     },
   },
    {
@@ -408,7 +471,7 @@ export const columns: ColumnDef<RepairJob>[] = [
     cell: function Cell({ row }) {
       const { format, getSymbol } = useCurrency();
       const amount = parseFloat(row.getValue("amountPaid") || 0)
-      return <div className="text-right font-medium text-green-600">{getSymbol()}{format(amount)}</div>
+      return <div className="text-right font-medium text-green-600 text-xs">{getSymbol()}{format(amount)}</div>
     },
   },
   {

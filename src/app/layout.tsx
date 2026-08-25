@@ -61,10 +61,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
             'reports', 
             'analysis', 
             'fiados', 
-            'payroll', 
-            'treasury', 
             'loans', 
-            'exchange',
             'inventory_aging'
         ];
 

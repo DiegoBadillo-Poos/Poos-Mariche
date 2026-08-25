@@ -196,18 +196,6 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
             form.clearErrors("sku");
         }
     }
-
-    if (watchedBarcode && watchedBarcode.trim() !== "") {
-        const barcodeExists = allProducts.some(p => 
-            p.barcode === watchedBarcode.trim() && 
-            p.id !== product?.id
-        );
-        if (barcodeExists) {
-            form.setError("barcode", { type: "manual", message: "¡Barras ya registrado!" });
-        } else {
-            form.clearErrors("barcode");
-        }
-    }
   }, [watchedName, watchedSku, watchedBarcode, allProducts, product?.id, form]);
 
   const { suggestedRetailPrice, suggestedPromoPrice } = useMemo(() => {
@@ -344,32 +332,32 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
     <Dialog open={open} onOpenChange={setOpen}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-hidden flex flex-col p-0">
-        <div className="p-6 pb-2">
+        <div className="p-4 sm:p-6 pb-2">
             <DialogHeader>
-                <DialogTitle className="uppercase font-bold">{isEditing ? 'Gestionar Producto' : 'Añadir Nuevo Producto'}</DialogTitle>
-                <DialogDescription>Configura los precios y asegúrate de que el stock coincida con tu inventario real.</DialogDescription>
+                <DialogTitle className="uppercase font-bold text-base sm:text-lg">{isEditing ? 'Gestionar Producto' : 'Añadir Nuevo Producto'}</DialogTitle>
+                <DialogDescription className="hidden sm:block">Configura los precios y asegura que el stock coincida con el inventario real.</DialogDescription>
             </DialogHeader>
         </div>
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
-            <div className="flex-1 overflow-y-auto px-6 space-y-6">
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 space-y-5 sm:space-y-6">
                 <FormField control={form.control} name="name" render={({ field, fieldState }) => (
-                    <FormItem className="pt-2">
+                    <FormItem className="pt-1">
                         <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Nombre del Artículo</FormLabel>
                         <FormControl>
                             <Input 
                                 {...field} 
                                 onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                                placeholder="EJ: PANTALLA SAMSUNG A51 ORIGINAL" 
-                                className={cn("uppercase font-normal", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                placeholder="EJ: PRODUCTO O SERVICIO..." 
+                                className={cn("uppercase h-9 sm:h-10", fieldState.error && "border-destructive")}
                             />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
                 )} />
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="category" render={({ field }) => (
                         <FormItem>
                             <FormLabel className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground"><Tag className="w-3 h-3" /> Categoría</FormLabel>
@@ -378,37 +366,25 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                     <Input 
                                         {...field} 
                                         onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                                        placeholder="EJ: PANTALLAS, BATERÍAS" 
-                                        className="flex-1 uppercase font-normal" 
+                                        placeholder="EJ: ACCESORIOS, REPUESTOS..." 
+                                        className="flex-1 uppercase h-9 sm:h-10" 
                                     />
                                 </FormControl>
                                 <Popover open={categoryPopoverOpen} onOpenChange={setCategoryPopoverOpen}>
                                     <PopoverTrigger asChild>
-                                        <Button type="button" variant="outline" size="icon" className="shrink-0" title="Ver categorías existentes">
+                                        <Button type="button" variant="outline" size="icon" className="shrink-0 h-9 w-9 sm:h-10 sm:w-10">
                                             <ChevronsUpDown className="h-4 w-4 opacity-50" />
                                         </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-[250px] p-0" align="end">
+                                    <PopoverContent className="w-[200px] sm:w-[250px] p-0" align="end">
                                         <Command>
-                                            <CommandInput placeholder="Buscar categoría..." className="font-normal" />
+                                            <CommandInput placeholder="Buscar..." className="h-9" />
                                             <CommandList>
                                                 <CommandEmpty>No hay resultados.</CommandEmpty>
                                                 <CommandGroup>
                                                     {categories.map((cat) => (
-                                                        <CommandItem
-                                                            key={cat}
-                                                            value={cat}
-                                                            onSelect={() => {
-                                                                form.setValue("category", cat.toUpperCase(), { shouldValidate: true });
-                                                                setCategoryPopoverOpen(false);
-                                                            }}
-                                                        >
-                                                            <Check
-                                                                className={cn(
-                                                                    "mr-2 h-4 w-4",
-                                                                    cat.toUpperCase() === field.value.toUpperCase() ? "opacity-100" : "opacity-0"
-                                                                )}
-                                                            />
+                                                        <CommandItem key={cat} value={cat} onSelect={() => { form.setValue("category", cat.toUpperCase()); setCategoryPopoverOpen(false); }}>
+                                                            <Check className={cn("mr-2 h-4 w-4", cat.toUpperCase() === field.value.toUpperCase() ? "opacity-100" : "opacity-0")} />
                                                             {cat.toUpperCase()}
                                                         </CommandItem>
                                                     ))}
@@ -418,14 +394,13 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                     </PopoverContent>
                                 </Popover>
                             </div>
-                            <FormMessage />
                         </FormItem>
                     )} />
                     <FormField control={form.control} name="unit" render={({ field }) => (
                         <FormItem>
                             <FormLabel className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground"><Scale className="w-3 h-3" /> Unidad</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
-                                <FormControl><SelectTrigger className="font-medium"><SelectValue /></SelectTrigger></FormControl>
+                                <FormControl><SelectTrigger className="h-9 sm:h-10"><SelectValue /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="unit">Unidad (pza)</SelectItem>
                                     <SelectItem value="kg">Kilogramos (kg)</SelectItem>
@@ -437,231 +412,121 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     )} />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="sku" render={({ field, fieldState }) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField control={form.control} name="sku" render={({ field }) => (
                         <FormItem>
-                            <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">SKU / Código Propio</FormLabel>
-                            <FormControl>
-                                <Input 
-                                    {...field} 
-                                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                                    placeholder="EJ: SKU-260225-1351" 
-                                    className={cn("uppercase font-mono font-normal", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
-                                />
-                            </FormControl>
+                            <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">SKU / Código</FormLabel>
+                            <FormControl><Input {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} className="uppercase font-mono h-9 sm:h-10" /></FormControl>
                             <FormMessage />
                         </FormItem>
                     )} />
-                    <FormField control={form.control} name="barcode" render={({ field, fieldState }) => (
+                    <FormField control={form.control} name="barcode" render={({ field }) => (
                         <FormItem>
                             <FormLabel className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground"><Barcode className="w-3 h-3" /> Código de Barras</FormLabel>
-                            <FormControl>
-                                <Input 
-                                    {...field} 
-                                    placeholder="Escanea o escribe..." 
-                                    className={cn("font-normal", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
-                                />
-                            </FormControl>
-                            <FormMessage />
+                            <FormControl><Input {...field} placeholder="Escanea..." className="h-9 sm:h-10" /></FormControl>
                         </FormItem>
                     )} />
                 </div>
 
                 {showRepairsFeature && (
                     <FormField control={form.control} name="compatibleModels" render={({ field }) => (
-                        <FormItem className="bg-muted/10 p-3 rounded-lg border border-dashed animate-in fade-in">
+                        <FormItem className="bg-muted/10 p-3 rounded-lg border border-dashed">
                             <FormLabel className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase"><Smartphone className="w-3.5 h-3.5" /> Modelos Compatibles</FormLabel>
-                            <FormControl>
-                                <Input 
-                                    {...field} 
-                                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                                    placeholder="EJ: S23 ULTRA, A51, REDMI NOTE 12..." 
-                                    className="uppercase font-normal"
-                                />
-                            </FormControl>
-                            <FormDescription className="text-[10px]">Escribe los modelos separados por coma.</FormDescription>
+                            <FormControl><Input {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} placeholder="EJ: MODELOS, SERIES..." className="uppercase h-9" /></FormControl>
                         </FormItem>
                     )} />
                 )}
 
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest border-b pb-1">
-                        <Calculator className="w-3.5 h-3.5" /> Estrategia de Precios
-                    </div>
+                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest border-b pb-1"><Calculator className="w-3.5 h-3.5" /> Estrategia de Precios</div>
                     
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 bg-muted/20 p-3 rounded-lg border">
+                    <div className="flex flex-wrap gap-x-3 gap-y-2 bg-muted/20 p-2 sm:p-3 rounded-lg border">
                         <FormField control={form.control} name="isFixedPrice" render={({ field }) => (
                             <FormItem className="flex items-center space-x-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={(v) => { field.onChange(v); if(v) form.setValue('hasCustomMargin', false); }} /></FormControl>
-                                <FormLabel className="font-bold cursor-pointer flex items-center gap-1 text-[10px] uppercase"><Lock className="w-3 h-3 text-amber-500" /> Precio Fijo</FormLabel>
+                                <FormLabel className="font-bold cursor-pointer text-[9px] sm:text-[10px] uppercase flex items-center gap-1"><Lock className="w-3 h-3 text-amber-500" /> Fijo</FormLabel>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="hasCustomMargin" render={({ field }) => (
                             <FormItem className="flex items-center space-x-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={(v) => { field.onChange(v); if(v) form.setValue('isFixedPrice', false); }} /></FormControl>
-                                <FormLabel className="font-bold cursor-pointer flex items-center gap-1 text-[10px] uppercase"><Percent className="w-3 h-3 text-blue-500" /> % Indiv.</FormLabel>
+                                <FormLabel className="font-bold cursor-pointer text-[9px] sm:text-[10px] uppercase flex items-center gap-1"><Percent className="w-3 h-3 text-blue-500" /> % Ind.</FormLabel>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="hasIVA" render={({ field }) => (
                             <FormItem className="flex items-center space-x-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                <FormLabel className="font-bold cursor-pointer flex items-center gap-1 text-[10px] uppercase"><Landmark className="w-3 h-3 text-green-600" /> IVA (16%)</FormLabel>
+                                <FormLabel className="font-bold cursor-pointer text-[9px] sm:text-[10px] uppercase flex items-center gap-1"><Landmark className="w-3 h-3 text-green-600" /> IVA</FormLabel>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="hasPromoPrice" render={({ field }) => (
                             <FormItem className="flex items-center space-x-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                <FormLabel className="font-bold cursor-pointer flex items-center gap-1 text-[10px] uppercase"><Gift className="w-3 h-3 text-pink-500" /> Oferta</FormLabel>
+                                <FormLabel className="font-bold cursor-pointer text-[9px] sm:text-[10px] uppercase flex items-center gap-1"><Gift className="w-3 h-3 text-pink-500" /> Oferta</FormLabel>
                             </FormItem>
                         )} />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="costPrice" render={({ field, fieldState }) => (
+                        <FormField control={form.control} name="costPrice" render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="text-[10px] font-bold uppercase">Costo Unitario ($)</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        type="number" 
-                                        step="0.01" 
-                                        {...field} 
-                                        className={cn("h-10 font-normal", fieldState.error && "border-destructive ring-destructive")} 
-                                    />
-                                </FormControl>
-                                <FormMessage />
+                                <FormControl><Input type="number" step="0.01" {...field} className="h-9 sm:h-10" /></FormControl>
                             </FormItem>
                         )} />
                         {isFixedPrice ? (
-                            <FormField control={form.control} name="fixedPrice" render={({ field, fieldState }) => (
+                            <FormField control={form.control} name="fixedPrice" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel className="text-[10px] font-bold text-amber-600 uppercase">Precio Venta Fijo ($)</FormLabel>
-                                    <FormControl>
-                                        <Input 
-                                            type="number" 
-                                            step="0.01" 
-                                            {...field} 
-                                            className={cn("h-10 border-amber-200 font-normal", fieldState.error && "border-destructive ring-destructive")} 
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
+                                    <FormLabel className="text-[10px] font-bold text-amber-600 uppercase">Precio Fijo ($)</FormLabel>
+                                    <FormControl><Input type="number" step="0.01" {...field} className="h-9 sm:h-10 border-amber-200" /></FormControl>
                                 </FormItem>
                             )} />
                         ) : hasCustomMargin ? (
                             <FormField control={form.control} name="customMargin" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel className="text-[10px] font-bold text-blue-600 uppercase">Margen Indiv. (%)</FormLabel>
-                                    <FormControl><Input type="number" {...field} className="h-10 border-blue-200 font-normal" /></FormControl>
+                                    <FormLabel className="text-[10px] font-bold text-blue-600 uppercase">Margen Ind. (%)</FormLabel>
+                                    <FormControl><Input type="number" {...field} className="h-9 sm:h-10 border-blue-200" /></FormControl>
                                 </FormItem>
                             )} />
                         ) : (
-                            <div className="space-y-2 opacity-50">
-                                <Label className="text-[10px] font-bold uppercase">Margen Global</Label>
-                                <Input value={`${profitMargin}%`} disabled className="h-10 bg-slate-100 font-normal" />
-                            </div>
+                            <div className="space-y-2 opacity-50"><Label className="text-[10px] font-bold uppercase">Margen Global</Label><Input value={`${profitMargin}%`} disabled className="h-9 sm:h-10" /></div>
                         )}
                     </div>
 
                     {hasPromoPrice && (
                         <FormField control={form.control} name="promoPrice" render={({ field }) => (
-                            <FormItem className="bg-pink-50/50 p-3 rounded-lg border border-pink-100 animate-in slide-in-from-top-2">
-                                <FormLabel className="text-[10px] font-bold text-pink-600 flex items-center gap-2 uppercase">
-                                    <Gift className="w-3.5 h-3.5" /> Precio Especial de Oferta ($)
-                                </FormLabel>
-                                <FormControl><Input type="number" step="0.01" {...field} className="h-10 border-pink-200 text-pink-700 bg-white font-normal" /></FormControl>
+                            <FormItem className="bg-pink-50/50 p-2 sm:p-3 rounded-lg border border-pink-100">
+                                <FormLabel className="text-[10px] font-bold text-pink-600 uppercase flex items-center gap-2"><Gift className="w-3.5 h-3.5" /> Precio Oferta ($)</FormLabel>
+                                <FormControl><Input type="number" step="0.01" {...field} className="h-9 sm:h-10 border-pink-200 text-pink-700 bg-white" /></FormControl>
                             </FormItem>
                         )} />
                     )}
 
-                    <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3 shadow-lg">
-                        <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-tighter text-slate-400 flex items-center gap-2">
-                                <TrendingUp className="w-3.5 h-3.5" /> Análisis Sugerido
-                            </span>
-                            {hasIVA && <Badge variant="outline" className="text-[8px] h-4 border-green-500 text-green-500 font-bold uppercase">CON IVA INCL.</Badge>}
-                        </div>
-                        
+                    <div className="p-3 sm:p-4 rounded-xl bg-slate-900 text-white space-y-3 shadow-lg">
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-500 uppercase">P. Venta (Reposición)</p>
-                                <p className="text-xl font-black text-blue-400">
-                                    ${formatCurrency(suggestedRetailPrice)}
-                                </p>
-                                <p className="text-[10px] text-slate-400 font-bold">Bs {formatCurrency(suggestedRetailPrice * bcvRate)}</p>
-                            </div>
-                            <div className="space-y-1 text-right">
-                                <p className="text-[9px] font-bold text-slate-500 uppercase">P. Oferta (Margen Base)</p>
-                                <p className="text-xl font-black text-green-400">
-                                    ${formatCurrency(suggestedPromoPrice)}
-                                </p>
-                                <p className="text-[10px] text-slate-400 font-bold">Bs {formatCurrency(suggestedPromoPrice * bcvRate)}</p>
-                            </div>
+                            <div><p className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase">P. Venta Sugerido</p><p className="text-lg sm:text-xl font-black text-blue-400">${formatCurrency(suggestedRetailPrice)}</p></div>
+                            <div className="text-right"><p className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase">P. Oferta Sugerido</p><p className="text-lg sm:text-xl font-black text-green-400">${formatCurrency(suggestedPromoPrice)}</p></div>
                         </div>
                     </div>
                 </div>
-
-                <Separator />
 
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest border-b pb-1">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Auditoría de Stock
+                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest border-b pb-1"><AlertTriangle className="w-3.5 h-3.5" /> Auditoría de Stock</div>
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                        <FormField control={form.control} name="stockLevel" render={({ field }) => <FormItem><FormLabel className="text-[10px] font-bold uppercase">Físico</FormLabel><FormControl><Input type="number" step="any" {...field} className="h-9 sm:h-10" /></FormControl></FormItem>} />
+                        <FormField control={form.control} name="reservedStock" render={({ field }) => <FormItem><FormLabel className="text-[10px] font-bold uppercase text-amber-600">Reserv.</FormLabel><FormControl><Input type="number" step="any" {...field} className="h-9 sm:h-10 border-amber-100" /></FormControl></FormItem>} />
+                        <FormField control={form.control} name="damagedStock" render={({ field }) => <FormItem><FormLabel className="text-[10px] font-bold uppercase text-destructive">Dañado</FormLabel><FormControl><Input type="number" step="any" {...field} className="h-9 sm:h-10 border-destructive/10" /></FormControl></FormItem>} />
                     </div>
-                    
-                    <div className="grid grid-cols-3 gap-4">
-                        <FormField control={form.control} name="stockLevel" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-[10px] font-bold uppercase">Stock Físico</FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 font-normal" /></FormControl>
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="reservedStock" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-[10px] font-bold uppercase text-amber-600">
-                                    {showRepairsFeature ? "En Taller" : "Reservado"}
-                                </FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-amber-200 text-amber-700 font-normal" /></FormControl>
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="damagedStock" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-[10px] font-bold uppercase text-destructive">Dañado</FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-destructive/20 text-destructive font-normal" /></FormControl>
-                            </FormItem>
-                        )} />
-                    </div>
-
-                    <div className={cn(
-                        "p-3 rounded-lg flex justify-between items-center border shadow-inner",
-                        availableReal <= 0 ? "bg-destructive/10 border-destructive/20" : "bg-green-600/10 border-green-600/20"
-                    )}>
-                        <div className="flex flex-col">
-                            <span className="text-[10px] font-bold uppercase text-slate-500">Resultado para Venta:</span>
-                        </div>
-                        <div className="text-right">
-                            <span className={cn("text-2xl font-black", availableReal <= 0 ? "text-destructive" : "text-green-700")}>
-                                {availableReal} {selectedUnit === 'unit' ? 'PZAS' : selectedUnit.toUpperCase()}
-                            </span>
-                        </div>
+                    <div className={cn("p-2 sm:p-3 rounded-lg flex justify-between items-center border", availableReal <= 0 ? "bg-red-50 border-red-100" : "bg-green-50 border-green-100")}>
+                        <span className="text-[10px] font-bold uppercase text-slate-500">Disponible Venta:</span>
+                        <span className={cn("text-xl sm:text-2xl font-black", availableReal <= 0 ? "text-destructive" : "text-green-700")}>{availableReal} {selectedUnit.toUpperCase()}</span>
                     </div>
                 </div>
-
-                <FormField control={form.control} name="lowStockThreshold" render={({ field }) => (
-                    <FormItem className="pb-6">
-                        <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Alerta de Stock Bajo ({selectedUnit.toUpperCase()})</FormLabel>
-                        <FormControl><Input type="number" step="0.001" {...field} className="h-10 font-normal" /></FormControl>
-                    </FormItem>
-                )} />
+                <div className="pb-4"></div>
             </div>
 
-            <div className="px-6 py-4 border-t bg-white">
-                <DialogFooter>
-                    <Button 
-                        type="submit" 
-                        className="w-full h-12 text-base font-bold shadow-lg uppercase" 
-                        disabled={form.formState.isSubmitting || !form.formState.isValid}
-                    >
-                        {form.formState.isSubmitting ? "GUARDANDO..." : "Sincronizar Producto"}
-                    </Button>
-                </DialogFooter>
+            <div className="px-4 sm:px-6 py-4 border-t bg-white shrink-0">
+                <DialogFooter><Button type="submit" className="w-full h-11 sm:h-12 font-bold uppercase tracking-tight" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? "Sincronizando..." : "Guardar Producto"}</Button></DialogFooter>
             </div>
           </form>
         </Form>

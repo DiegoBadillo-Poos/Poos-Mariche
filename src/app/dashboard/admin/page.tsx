@@ -47,10 +47,7 @@ const ALL_MODULES: { id: UserModule, label: string }[] = [
     { id: 'reports', label: 'Reportes Financieros' },
     { id: 'analysis', label: 'Análisis de Negocio' },
     { id: 'fiados', label: 'Fiados / Créditos' },
-    { id: 'payroll', label: 'Registro de Pago' },
     { id: 'loans', label: 'Préstamos' },
-    { id: 'exchange', label: 'Cambio de Divisa' },
-    { id: 'treasury', label: 'Tesorería' },
     { id: 'inventory_aging', label: 'Antigüedad de Stock' },
 ];
 

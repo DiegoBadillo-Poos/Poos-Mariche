@@ -1,10 +1,8 @@
-
 "use client";
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
   Package,
   Wrench,
   ShoppingCart,
@@ -13,10 +11,7 @@ import {
   TrendingUp,
   ShieldCheck,
   HandCoins,
-  ReceiptText,
-  PiggyBank,
   HandHelping,
-  RefreshCcw,
   Lock,
 } from 'lucide-react';
 import {
@@ -44,18 +39,15 @@ type NavItem = {
     module?: UserModule;
 };
 
+// Nuevo orden solicitado por el usuario
 const navItems: NavItem[] = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Panel de control' },
+  { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
   { href: '/dashboard/inventory', icon: Package, label: 'Inventario', module: 'inventory' },
   { href: '/dashboard/repairs', icon: Wrench, label: 'Reparaciones', module: 'repairs' },
-  { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
-  { href: '/dashboard/fiados', icon: HandCoins, label: 'Fiados / Créditos', module: 'fiados' },
-  { href: '/dashboard/payroll', icon: ReceiptText, label: 'Registro de Pagos', module: 'payroll' },
-  { href: '/dashboard/loans', icon: HandHelping, label: 'Préstamos', module: 'loans' },
-  { href: '/dashboard/exchange', icon: RefreshCcw, label: 'Cambio de Divisa', module: 'exchange' },
-  { href: '/dashboard/treasury', icon: PiggyBank, label: 'Tesorería', module: 'treasury' },
   { href: '/dashboard/reports', icon: BarChart2, label: 'Reportes', module: 'reports' },
   { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis', module: 'analysis' },
+  { href: '/dashboard/fiados', icon: HandCoins, label: 'Fiados / Créditos', module: 'fiados' },
+  { href: '/dashboard/loans', icon: HandHelping, label: 'Préstamos', module: 'loans' },
 ];
 
 export function SidebarNav() {
@@ -74,7 +66,7 @@ export function SidebarNav() {
       if (!item.module) return true;
       if (!profile) return false;
       
-      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll', 'treasury', 'loans', 'exchange'];
+      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'loans'];
       return enabledModules.includes(item.module);
   });
 
@@ -88,7 +80,7 @@ export function SidebarNav() {
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href="/dashboard/pos" className="flex items-center gap-2">
             <AppLogo className="w-8 h-8 text-sidebar-primary" />
             <span className={cn(
                 "text-lg font-semibold text-sidebar-foreground",

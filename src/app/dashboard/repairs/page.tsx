@@ -20,7 +20,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { FilterFn } from "@tanstack/react-table";
 import { SecurityGate } from "@/components/security-gate";
 
-// Filtro personalizado para reparaciones
 const repairFilterFn: FilterFn<RepairJob> = (row, columnId, value) => {
     const term = String(value).toLowerCase();
     const r = row.original;
@@ -62,14 +61,12 @@ function RepairsContent() {
         if (!repairJobs) return [];
         let temp = repairJobs;
 
-        // Filtro de Fecha
         if (dateRange?.from) {
             const from = startOfDay(dateRange.from);
             const to = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
             temp = temp.filter(job => job.createdAt && isWithinInterval(new Date(job.createdAt), { start: from, end: to }));
         }
 
-        // Filtros de Estado
         if (statusFilter === 'unpaid') {
             temp = temp.filter(job => !job.isPaid);
         } else if (statusFilter === 'undelivered') {
@@ -87,26 +84,18 @@ function RepairsContent() {
 
     return (
         <>
-            <PageHeader title="Trabajos de Reparación">
+            <PageHeader title="Reparaciones">
                 <RepairFormDialog>
-                    <Button><PlusCircle className="mr-2 h-4 w-4" /> Registrar Reparación</Button>
+                    <Button size="sm" className="sm:h-10 px-2 sm:px-4"><PlusCircle className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Registrar</span> Reparación</Button>
                 </RepairFormDialog>
             </PageHeader>
-            <main className="flex-1 p-4 sm:p-6 space-y-4">
+            <main className="flex-1 p-2 sm:p-6 space-y-4 max-w-7xl mx-auto w-full">
                 <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-full">
-                    <TabsList className="grid w-full grid-cols-4 max-w-[800px]">
-                        <TabsTrigger value="all" className="flex items-center gap-2">
-                            <LayoutGrid className="w-3.5 h-3.5" /> Todas
-                        </TabsTrigger>
-                        <TabsTrigger value="unpaid" className="flex items-center gap-2 text-destructive font-bold">
-                            <DollarSign className="w-3.5 h-3.5" /> Por Cobrar
-                        </TabsTrigger>
-                        <TabsTrigger value="undelivered" className="flex items-center gap-2 text-amber-600 font-bold">
-                            <Clock className="w-3.5 h-3.5" /> Por Entregar
-                        </TabsTrigger>
-                        <TabsTrigger value="warranty" className="flex items-center gap-2 text-blue-600 font-bold">
-                            <ShieldCheck className="w-3.5 h-3.5" /> En Garantía
-                        </TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto p-1 bg-muted/50">
+                        <TabsTrigger value="all" className="text-[10px] sm:text-sm py-2">Todas</TabsTrigger>
+                        <TabsTrigger value="unpaid" className="text-[10px] sm:text-sm py-2 text-destructive font-bold">Por Cobrar</TabsTrigger>
+                        <TabsTrigger value="undelivered" className="text-[10px] sm:text-sm py-2 text-amber-600 font-bold">Por Entregar</TabsTrigger>
+                        <TabsTrigger value="warranty" className="text-[10px] sm:text-sm py-2 text-blue-600 font-bold">Garantía</TabsTrigger>
                     </TabsList>
                 </Tabs>
 
@@ -114,23 +103,23 @@ function RepairsContent() {
                     columns={columns} 
                     data={filteredRepairJobs || []}
                     isLoading={isLoading}
-                    filterPlaceholder="Buscar cliente, equipo, falla o ID..."
+                    filterPlaceholder="Buscar cliente o equipo..."
                     globalFilterFn={repairFilterFn}
                 >
                     {(table) => (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
                              <Popover>
                                 <PopoverTrigger asChild>
-                                <Button variant="outline" className={cn("w-[280px] justify-start", !dateRange && "text-muted-foreground")}>
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {dateRange?.from ? (dateRange.to ? `${format(dateRange.from, "P", { locale: es })} - ${format(dateRange.to, "P", { locale: es })}` : format(dateRange.from, "P", { locale: es })) : "Filtrar por fecha"}
+                                <Button variant="outline" className={cn("flex-1 sm:w-[240px] justify-start text-xs", !dateRange && "text-muted-foreground")}>
+                                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                                    {dateRange?.from ? (dateRange.to ? `${format(dateRange.from, "dd/MM")} - ${format(dateRange.to, "dd/MM")}` : format(dateRange.from, "dd/MM")) : "Filtrar fecha"}
                                 </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0" align="start">
                                     <Calendar mode="range" selected={dateRange} onSelect={setDateRange} locale={es} />
                                 </PopoverContent>
                             </Popover>
-                            {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><ClearIcon className="h-4 w-4" /></Button>}
+                            {dateRange && <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => setDateRange(undefined)}><ClearIcon className="h-4 w-4" /></Button>}
                         </div>
                     )}
                 </DataTable>

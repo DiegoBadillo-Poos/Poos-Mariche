@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Product } from "@/lib/types";
@@ -20,7 +19,7 @@ type ProductGridProps = {
   isLoading?: boolean;
 };
 
-const ITEMS_PER_PAGE = 25;
+const ITEMS_PER_PAGE = 36;
 
 export function ProductGrid({ products, onProductSelect, isLoading }: ProductGridProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -87,40 +86,41 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
 
 
   return (
-    <div className="flex flex-col h-full">
-        <div className="flex flex-col md:flex-row gap-4 mb-4">
+    <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex flex-col sm:flex-row gap-2 mb-3 shrink-0">
             <Select value={activeCategory} onValueChange={setActiveCategory}>
-                <SelectTrigger className="w-full md:w-[200px]">
-                    <SelectValue placeholder="Seleccionar categoría" />
+                <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
+                    <SelectValue placeholder="Categoría" />
                 </SelectTrigger>
                 <SelectContent>
                     {categories.map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        <SelectItem key={cat} value={cat} className="text-xs">{cat}</SelectItem>
                     ))}
                 </SelectContent>
             </Select>
             <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                     type="search"
-                    placeholder="Busca por nombre, SKU, Código de Barras..."
-                    className="w-full pl-8"
+                    placeholder="Buscar producto o SKU..."
+                    className="w-full pl-8 h-8 text-xs"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
             </div>
         </div>
-        <div className="relative flex-1 min-0">
-          <ScrollArea className="absolute inset-0">
-            <div className="flex flex-wrap gap-4 pr-4">
+        <div className="relative flex-1 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-1.5 sm:gap-2 pr-2">
                 {isLoading ? (
-                    Array.from({ length: 10 }).map((_, i) => (
-                        <Card key={`skeleton-${i}`} className="w-[150px]">
-                            <CardHeader className="p-2">
+                    Array.from({ length: 18 }).map((_, i) => (
+                        <Card key={`skeleton-${i}`} className="h-[120px]">
+                            <CardHeader className="p-2 space-y-2">
                                <Skeleton className="h-4 w-3/4" />
+                               <Skeleton className="h-3 w-1/2" />
                             </CardHeader>
-                            <CardFooter className="p-2 flex justify-end">
-                                <Skeleton className="h-4 w-1/4" />
+                            <CardFooter className="p-2 flex justify-end mt-auto">
+                                <Skeleton className="h-4 w-1/3" />
                             </CardFooter>
                         </Card>
                     ))
@@ -139,37 +139,31 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                             key={product.id}
                             onClick={() => availableStock > 0 && onProductSelect(product)}
                             className={cn(
-                                "cursor-pointer hover:border-primary transition-colors flex flex-col justify-between w-[150px]",
-                                availableStock <= 0 && "opacity-50 cursor-not-allowed hover:border-input bg-slate-50"
+                                "cursor-pointer hover:border-primary transition-all flex flex-col justify-between h-full group border shadow-sm",
+                                availableStock <= 0 && "opacity-50 cursor-not-allowed bg-slate-50 border-dashed"
                             )}
                         >
-                            <CardHeader className="p-2">
-                                <CardTitle className="text-sm font-medium leading-tight h-10 flex items-start gap-2">
-                                  {product.isCombo && <PackagePlus className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" title="Combo"/>}
-                                  {product.isFixedPrice && <Lock className="h-3 w-3 text-amber-500 flex-shrink-0 mt-1" title="Precio Fijo" />}
-                                  {product.hasCustomMargin && !product.isFixedPrice && <Percent className="h-3 w-3 text-blue-500 flex-shrink-0 mt-1" title={`Margen Indiv: ${product.customMargin}%`} />}
-                                  {product.unit && product.unit !== 'unit' && <Scale className="h-3 w-3 text-slate-400 flex-shrink-0 mt-1" title="Venta por peso/volumen" />}
-                                  <span className="line-clamp-2">{product.name}</span>
+                            <CardHeader className="p-1.5 pb-1 space-y-0.5">
+                                <CardTitle className="text-[10px] sm:text-[11px] font-bold leading-tight line-clamp-2 min-h-[1.8rem] flex gap-1 items-start">
+                                  <span className="flex-1 uppercase">{product.name}</span>
                                 </CardTitle>
                                 {product.compatibleModels && product.compatibleModels.length > 0 && (
-                                  <p className="text-[10px] text-muted-foreground truncate pt-1">{product.compatibleModels.join(', ')}</p>
+                                  <p className="text-[8px] text-muted-foreground truncate opacity-70">{product.compatibleModels.join(', ')}</p>
                                 )}
                             </CardHeader>
-                            <CardFooter className="p-2 flex justify-between items-end mt-auto border-t pt-2">
-                                <div className="flex flex-col">
-                                    <p className={cn("text-[9px] font-black uppercase", availableStock <= 0 ? "text-destructive" : "text-slate-500")}>
-                                        Disp: {availableStock}
-                                    </p>
-                                    <span className="text-[7px] text-muted-foreground font-bold uppercase">{unitLabel}</span>
-                                </div>
-                                <div className="text-right flex flex-col">
+                            <CardFooter className="p-1.5 flex flex-col items-stretch gap-0.5 mt-auto border-t bg-slate-50/50 group-hover:bg-white transition-colors">
+                                <div className="flex justify-between items-center">
+                                    <span className={cn("text-[8px] font-black uppercase", availableStock <= 0 ? "text-destructive" : "text-slate-500")}>
+                                        S: {availableStock}
+                                    </span>
                                     <div className={cn("text-xs font-black", hasPromo ? "text-green-600" : "text-primary")}>
-                                      {hasPromo && <TicketPercent className="w-2.5 h-3 inline-block mr-0.5"/>}
+                                      {hasPromo && <TicketPercent className="w-2 h-2 inline-block mr-0.5 align-middle mb-0.5"/>}
                                       {getSymbol('USD')}{format(displayPrice, 'USD')}
                                     </div>
-                                    <div className="text-[9px] text-muted-foreground font-bold border-t border-muted mt-0.5 pt-0.5">
-                                      {getSymbol('Bs')}{format(displayPriceBs, 'Bs')}
-                                    </div>
+                                </div>
+                                <div className="text-[8px] sm:text-[9px] text-muted-foreground font-bold flex justify-between pt-0.5 opacity-80">
+                                  <span className="text-[7px]">{unitLabel.toUpperCase()}</span>
+                                  <span>{getSymbol('Bs')}{format(displayPriceBs, 'Bs')}</span>
                                 </div>
                             </CardFooter>
                         </Card>
@@ -179,26 +173,14 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
           </ScrollArea>
         </div>
          {totalPages > 1 && (
-            <div className="flex items-center justify-end space-x-2 pt-4 flex-shrink-0">
-                <span className="text-sm text-muted-foreground">
-                    Página {currentPage} de {totalPages}
+            <div className="flex items-center justify-between pt-3 flex-shrink-0 bg-white/80 backdrop-blur-sm mt-auto">
+                <span className="text-[9px] text-muted-foreground font-black uppercase">
+                    Pág. {currentPage} / {totalPages}
                 </span>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handlePreviousPage}
-                    disabled={currentPage === 1}
-                >
-                    Anterior
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleNextPage}
-                    disabled={currentPage >= totalPages}
-                >
-                    Siguiente
-                </Button>
+                <div className="flex gap-1">
+                    <Button variant="outline" size="sm" className="h-6 text-[9px] px-2 font-bold" onClick={handlePreviousPage} disabled={currentPage === 1}>Anterior</Button>
+                    <Button variant="outline" size="sm" className="h-6 text-[9px] px-2 font-bold" onClick={handleNextPage} disabled={currentPage >= totalPages}>Siguiente</Button>
+                </div>
             </div>
         )}
     </div>

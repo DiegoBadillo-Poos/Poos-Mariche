@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { Suspense, useState, useMemo } from 'react';
@@ -79,9 +78,9 @@ function BulkDeleteButton({ table }: { table: TanstackTable<Product> }) {
     return (
         <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
                 <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={selectedRows.length === 0}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Eliminar ({selectedRows.length})
+                <Button variant="destructive" size="sm" disabled={selectedRows.length === 0} className="h-9 px-2 sm:px-4">
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Eliminar</span> ({selectedRows.length})
                 </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -119,7 +118,6 @@ function InventoryContent() {
     const showAging = profile?.enabledModules?.includes('inventory_aging') ?? false;
     const showRepairs = profile?.enabledModules?.includes('repairs') ?? true;
 
-    // Filtramos las columnas dinámicamente para que la cabecera desaparezca por completo si el módulo no está activo
     const tableColumns = useMemo(() => {
         return columns.filter(column => {
             if (column.id === 'age') return showAging;
@@ -160,23 +158,20 @@ function InventoryContent() {
     return (
         <>
             <PageHeader title="Inventario">
-                <PriceCalculatorDialog><Button variant="outline" size="icon"><Calculator className="h-4 w-4" /></Button></PriceCalculatorDialog>
+                <PriceCalculatorDialog><Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10"><Calculator className="h-4 w-4" /></Button></PriceCalculatorDialog>
                 <ProductFormDialog productCount={products?.length || 0}>
-                    <Button><PlusCircle className="mr-2 h-4 w-4" /> Añadir Producto</Button>
+                    <Button size="sm" className="sm:h-10 px-2 sm:px-4"><PlusCircle className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Añadir</span> Producto</Button>
                 </ProductFormDialog>
             </PageHeader>
-            <main className="flex-1 p-4 sm:p-6">
+            <main className="flex-1 p-2 sm:p-6 max-w-7xl mx-auto w-full">
                 <Tabs value={stockFilter} onValueChange={(v) => setStockFilter(v as any)} className="mb-4">
-                    <TabsList className={cn(
-                        "grid w-full md:w-[600px]",
-                        showAging ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3"
-                    )}>
-                        <TabsTrigger value="all">Todos</TabsTrigger>
-                        <TabsTrigger value="low">Stock Bajo</TabsTrigger>
-                        <TabsTrigger value="out">Sin Stock</TabsTrigger>
+                    <TabsList className="grid w-full h-auto grid-cols-2 sm:grid-cols-4 p-1 bg-muted/50">
+                        <TabsTrigger value="all" className="text-[10px] sm:text-sm py-2">Todos</TabsTrigger>
+                        <TabsTrigger value="low" className="text-[10px] sm:text-sm py-2">Stock Bajo</TabsTrigger>
+                        <TabsTrigger value="out" className="text-[10px] sm:text-sm py-2">Sin Stock</TabsTrigger>
                         {showAging && (
-                            <TabsTrigger value="old" className="text-amber-600 font-bold">
-                                <Clock className="w-3.5 h-3.5 mr-1.5" /> Antiguos (+15d)
+                            <TabsTrigger value="old" className="text-[10px] sm:text-sm py-2 text-amber-600 font-bold">
+                                <Clock className="w-3.5 h-3.5 mr-1 sm:mr-1.5" /> <span className="hidden sm:inline">Antiguos (+15d)</span><span className="sm:hidden">+15d</span>
                             </TabsTrigger>
                         )}
                     </TabsList>
@@ -185,15 +180,15 @@ function InventoryContent() {
                     columns={tableColumns} 
                     data={filteredProducts}
                     isLoading={isLoading}
-                    filterPlaceholder="Buscar productos o descripción..."
+                    filterPlaceholder="Buscar productos..."
                     meta={{ allProducts: products || [], showAging, showRepairs }}
                     globalFilterFn={productFilterFn}
                 >
                     {(table) => (
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Categoría" /></SelectTrigger>
-                                <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c === 'all' ? 'Todas las Categorías' : c}</SelectItem>)}</SelectContent>
+                                <SelectTrigger className="w-full sm:w-[160px] h-9 text-xs"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                                <SelectContent>{categories.map(c => <SelectItem key={c} value={c} className="text-xs">{c === 'all' ? 'Todas' : c}</SelectItem>)}</SelectContent>
                             </Select>
                             <PrintLabelsButton table={table} />
                             <BulkDeleteButton table={table} />

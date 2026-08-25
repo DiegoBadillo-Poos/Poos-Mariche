@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Table } from "@tanstack/react-table";
@@ -178,9 +177,9 @@ export function PrintLabelsButton({ table }: PrintLabelsButtonProps) {
     }
 
     return (
-        <Button variant="outline" onClick={handlePrintClick} disabled={selectedRows.length === 0} className="font-bold">
-            <Printer className="mr-2 h-4 w-4" />
-            Imprimir Etiquetas ({selectedRows.length})
+        <Button variant="outline" size="sm" onClick={handlePrintClick} disabled={selectedRows.length === 0} className="h-9 px-2 sm:px-4 font-bold">
+            <Printer className="mr-1.5 h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Etiquetas</span> ({selectedRows.length})
         </Button>
     )
 }

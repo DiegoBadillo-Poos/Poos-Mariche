@@ -25,7 +25,6 @@ function POSContent() {
     const router = useRouter();
     const [cart, setCart] = useState<CartItem[]>([]);
     const [activeRepairJob, setActiveRepairJob] = useState<RepairJob | null>(null);
-    const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
 
     const productsCollection = useMemoFirebase(() => 
         (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null,
@@ -39,30 +38,8 @@ function POSContent() {
     );
     const { data: heldSales } = useCollection<HeldSale>(heldSalesCollection);
 
-    // PERSISTENCIA: Cargar carrito desde localStorage al iniciar
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const savedCart = localStorage.getItem('mm_active_cart');
-            if (savedCart && !searchParams.get('items')) {
-                try {
-                    setCart(JSON.parse(savedCart));
-                } catch (e) {
-                    localStorage.removeItem('mm_active_cart');
-                }
-            }
-            setIsInitialLoadDone(true);
-        }
-    }, [searchParams]);
-
-    // PERSISTENCIA: Guardar carrito en localStorage cuando cambie
-    useEffect(() => {
-        if (!isInitialLoadDone) return;
-        if (cart.length > 0) {
-            localStorage.setItem('mm_active_cart', JSON.stringify(cart));
-        } else {
-            localStorage.removeItem('mm_active_cart');
-        }
-    }, [cart, isInitialLoadDone]);
+    // Se ha eliminado la persistencia en localStorage para asegurar que el carrito 
+    // inicie siempre vacío en cada nueva carga de la página.
 
     useEffect(() => {
         if (!user || isUserLoading) return;
@@ -93,7 +70,6 @@ function POSContent() {
             try {
                 const job: RepairJob = JSON.parse(decodeURIComponent(repairJobData));
                 setActiveRepairJob(job);
-                // PASAR EL FLAG DE PROMOCIÓN DETECTADA AL CARRITO
                 setCart([{ 
                     productId: job.id!, 
                     name: `Reparación: ${job.deviceMake} ${job.deviceModel}`, 
@@ -178,7 +154,7 @@ function POSContent() {
     const handleHoldSale = async (name: string) => {
         if (!firestore || !user || cart.length === 0) return;
         const ref = doc(collection(firestore, 'users', user.uid, 'held_sales'));
-        setDocumentNonBlocking(ref, { id: ref.id, name, items: cart, createdAt: new Date().toISOString() });
+        setDocumentNonBlocking(ref, { id: ref.id, name, items: cart, createdAt: new Date().toISOString() }, { merge: true });
         setCart([]);
     };
 
@@ -194,16 +170,19 @@ function POSContent() {
              <header className="bg-white flex h-14 items-center gap-4 border-b px-4 sm:h-16 sm:px-6">
                 <div className="flex items-center gap-2">
                     <SidebarTrigger />
-                    <h1 className="text-lg font-semibold">Punto de Venta</h1>
+                    <h1 className="text-lg font-semibold truncate max-w-[120px] sm:max-w-none">Punto de Venta</h1>
                 </div>
-                <div className="ml-auto flex items-center gap-2">
-                    <PriceCalculatorDialog><Button variant="outline" size="icon"><Calculator className="h-4 w-4" /></Button></PriceCalculatorDialog>
+                <div className="ml-auto flex items-center gap-1 sm:gap-2">
+                    <PriceCalculatorDialog><Button variant="outline" size="icon" className="h-8 w-8 sm:h-10 sm:w-10"><Calculator className="h-4 w-4" /></Button></PriceCalculatorDialog>
                     <CustomItemDialog onAddCustomItem={handleAddCustomItem} />
                     <HeldSalesSheet heldSales={heldSales || []} />
                 </div>
             </header>
-            <main className="flex-1 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 overflow-hidden">
-                <div className="col-span-1 md:col-span-1 lg:col-span-2 bg-white border-r flex flex-col">
+            <main className="flex-1 flex flex-col md:grid md:grid-cols-3 lg:grid-cols-5 overflow-hidden">
+                <div className="order-1 md:order-2 md:col-span-2 lg:col-span-3 p-2 sm:p-4 overflow-hidden flex flex-col">
+                     <ProductGrid products={products || []} onProductSelect={handleProductSelect} isLoading={productsLoading} />
+                </div>
+                <div className="order-2 md:order-1 md:col-span-1 lg:col-span-2 bg-white border-t md:border-t-0 md:border-r flex flex-col h-[45vh] md:h-full">
                     <CartDisplay 
                         cart={cart}
                         allProducts={products || []}
@@ -216,9 +195,6 @@ function POSContent() {
                         onHoldSale={handleHoldSale}
                         repairJobId={activeRepairJob?.id}
                     />
-                </div>
-                <div className="col-span-1 md:col-span-2 lg:col-span-3 p-4 overflow-hidden">
-                     <ProductGrid products={products || []} onProductSelect={handleProductSelect} isLoading={productsLoading} />
                 </div>
             </main>
         </div>
