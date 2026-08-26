@@ -32,7 +32,7 @@ export function ExchangeRateReminder() {
         window.addEventListener('offline', handleOffline);
 
         // Lógica de Instalación PWA
-        const handleBeforeInstallPrompt = (event: Event) => {
+        const handleBeforeInstallPrompt = (event: any) => {
             event.preventDefault();
             setInstallPrompt(event);
         };

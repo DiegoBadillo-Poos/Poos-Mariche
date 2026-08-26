@@ -1,8 +1,8 @@
 {
-  "name": "POS MARICHE",
-  "short_name": "POSMariche",
-  "description": "Sistema de Gestión para Taller y Punto de Venta",
-  "start_url": "/dashboard/pos",
+  "name": "POS Mariche",
+  "short_name": "Mariche",
+  "description": "Sistema de Gestión de Negocio y Taller",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#2532c2",
@@ -13,22 +13,14 @@
       "type": "image/x-icon"
     },
     {
-      "src": "/icons/icon-192x192.png",
+      "src": "/favicon.ico",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/x-icon"
     },
     {
-      "src": "/icons/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-512x512.png",
+      "src": "/favicon.ico",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/x-icon"
     }
   ]
 }
