@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Toaster } from '@/components/ui/toaster';
@@ -197,6 +196,7 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content="#2532c2" />
+        <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
         <link rel="manifest" href="/manifest.json" />
         <title>POS MARICHE - Gestión de Negocio</title>
