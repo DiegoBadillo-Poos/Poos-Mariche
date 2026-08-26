@@ -1,0 +1,24 @@
+
+{
+  "name": "POS Mariche - Gestión de Negocio",
+  "short_name": "POS Mariche",
+  "description": "Sistema integral para Punto de Venta, Inventario y Taller.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2532c2",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/posmariche/192/192",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://picsum.photos/seed/posmariche/512/512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

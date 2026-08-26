@@ -53,7 +53,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
         const profileSnap = await getDoc(profileRef);
         const existingData = profileSnap.exists() ? profileSnap.data() : {};
 
-        // Lista de todos los módulos disponibles en el sistema
         const allAvailableModules = [
             'inventory', 
             'pos', 
@@ -77,15 +76,13 @@ function AppContent({ children }: { children: React.ReactNode }) {
               ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString() 
               : new Date().toISOString(),
             createdAt: existingData.createdAt || new Date().toISOString(),
-            enabledModules: allAvailableModules, // Solo activamos todos para usuarios nuevos
+            enabledModules: allAvailableModules,
             lockedModules: [],
             isPinRequired: false,
             showInfoOnReceipt: true,
             businessRIF: "",
             businessAddress: ""
           } : {
-            // Para usuarios existentes, NO volvemos a sumar todos los módulos automáticamente
-            // para que las desactivaciones manuales sean respetadas.
             ...(!existingData.lockedModules && { lockedModules: [] })
           })
         };
@@ -199,8 +196,9 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#FFFFFF" />
+        <meta name="theme-color" content="#2532c2" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+        <link rel="manifest" href="/manifest.json" />
         <title>POS MARICHE - Gestión de Negocio</title>
       </head>
       <body className={cn("font-sans antialiased", process.env.NODE_ENV === 'development' ? 'debug-screens' : '')}>

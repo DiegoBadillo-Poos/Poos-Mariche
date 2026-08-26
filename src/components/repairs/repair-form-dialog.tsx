@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
 import { ProductFormDialog } from "../inventory/product-form-dialog";
 import { Switch } from "../ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 const DRAFT_KEY = 'mm_repair_draft';
 
@@ -242,6 +243,12 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
 
   const handleRemovePart = (productId: string) => {
       form.setValue('reservedParts', reservedParts.filter(p => p.productId !== productId));
+  };
+
+  const handleTogglePartPromo = (productId: string) => {
+      form.setValue('reservedParts', reservedParts.map(p => 
+          p.productId === productId ? { ...p, isPromo: !p.isPromo } : p
+      ));
   };
 
   const handleMinimize = () => {
@@ -507,9 +514,28 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                                                 {part.isPromo && !part.isWarranty && <Badge className="text-[8px] h-3 px-1 bg-blue-600 font-bold">OFERTA</Badge>}
                                             </div>
                                         </div>
-                                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleRemovePart(part.productId)}>
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </Button>
+                                        <div className="flex items-center gap-1">
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button 
+                                                            type="button"
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className={cn("h-7 w-7", part.isPromo ? "text-blue-600 bg-blue-100" : "text-muted-foreground")}
+                                                            onClick={() => handleTogglePartPromo(part.productId)}
+                                                            disabled={part.isConsumed}
+                                                        >
+                                                            <TicketPercent className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p>Alternar Tasa de Reposición (Oferta)</p></TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleRemovePart(part.productId)}>
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </div>
                                     </div>
                                 );
                             })}

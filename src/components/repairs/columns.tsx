@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Edit, Trash2, DollarSign, Printer, ArrowUpDown, Loader2, History, Clock } from "lucide-react"
+import { MoreHorizontal, Edit, Trash2, DollarSign, Printer, ArrowUpDown, Loader2, History, Clock, FileText, Tag, StickyNote } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -30,7 +30,7 @@ import { useCurrency } from "@/hooks/use-currency"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { useFirebase, useDoc, useMemoFirebase, useCollection } from "@/firebase"
 import { doc, runTransaction, type DocumentSnapshot, collection, query, where, getDoc } from "firebase/firestore"
-import { handlePrintAllTickets } from "./repair-ticket"
+import { handlePrintAllTickets, handlePrintCustomerTicket, handlePrintInternalTicket, handlePrintStickerTicket } from "./repair-ticket"
 import { AdminAuthDialog } from "../admin-auth-dialog"
 import { useState, type ReactNode, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -258,6 +258,24 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
         });
     }
 
+    const onPrintCustomer = () => {
+        handlePrintCustomerTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
+            toast({ variant: "destructive", title: "Error", description: error })
+        });
+    }
+
+    const onPrintInternal = () => {
+        handlePrintInternalTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
+            toast({ variant: "destructive", title: "Error", description: error })
+        });
+    }
+
+    const onPrintSticker = () => {
+        handlePrintStickerTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
+            toast({ variant: "destructive", title: "Error", description: error })
+        });
+    }
+
     return (
         <>
             <DropdownMenu>
@@ -292,9 +310,26 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     </RepairFormDialog>
                     
                     <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-[10px] font-black uppercase text-muted-foreground tracking-tighter">Opciones de Impresión</DropdownMenuLabel>
+                    
                     <DropdownMenuItem onSelect={onPrintAll}>
-                        <Printer className="mr-2 h-4 w-4" />
-                        Imprimir Tickets
+                        <Printer className="mr-2 h-4 w-4 text-primary" />
+                        Imprimir Todo (3)
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem onSelect={onPrintCustomer}>
+                        <FileText className="mr-2 h-4 w-4 opacity-50" />
+                        Nota de Entrega
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem onSelect={onPrintInternal}>
+                        <StickyNote className="mr-2 h-4 w-4 opacity-50" />
+                        Control Interno
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem onSelect={onPrintSticker}>
+                        <Tag className="mr-2 h-4 w-4 opacity-50" />
+                        Etiqueta de Equipo
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator />

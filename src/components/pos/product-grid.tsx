@@ -19,7 +19,7 @@ type ProductGridProps = {
   isLoading?: boolean;
 };
 
-const ITEMS_PER_PAGE = 36;
+const ITEMS_PER_PAGE = 25;
 
 export function ProductGrid({ products, onProductSelect, isLoading }: ProductGridProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -58,7 +58,7 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
     const paginated = filteredProducts.slice(startIndex, endIndex);
-    const pages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+    const pages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
     return { paginatedProducts: paginated, totalPages: pages };
   }, [currentPage, filteredProducts]);
 

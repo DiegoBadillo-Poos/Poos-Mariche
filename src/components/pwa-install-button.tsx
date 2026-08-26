@@ -46,9 +46,13 @@ export function PwaInstallButton() {
   }
 
   return (
-    <Button onClick={handleInstallClick} className="w-full justify-start">
-      <Download className="mr-2 h-4 w-4" />
-      Instalar Aplicación
+    <Button 
+      onClick={handleInstallClick} 
+      variant="outline" 
+      className="w-full justify-start h-10 text-[10px] font-black border-primary/30 text-primary hover:bg-primary/5 animate-in fade-in slide-in-from-bottom-2"
+    >
+      <Download className="mr-2 h-3.5 w-3.5" />
+      INSTALAR EN ESCRITORIO
     </Button>
   );
 }

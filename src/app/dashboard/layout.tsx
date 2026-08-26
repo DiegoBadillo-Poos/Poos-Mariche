@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { UserProfile } from '@/lib/types';
@@ -31,7 +30,7 @@ const ExchangeRateReminder = dynamic(
 
 function LicenseExpiredScreen({ profile }: { profile: UserProfile | null }) {
     const { auth } = useFirebase();
-    const whatsappNumber = "584141135956";
+    const whatsappNumber = "584241765136";
     
     // Determinamos si es una cuenta nueva (registrada hace menos de 10 min y sin activar) o una licencia vencida
     const isNewAccount = profile && profile.createdAt && 

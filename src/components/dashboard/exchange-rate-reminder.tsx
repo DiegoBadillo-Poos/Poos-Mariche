@@ -1,7 +1,7 @@
 "use client";
 
 import { useCurrency } from "@/hooks/use-currency";
-import { AlertCircle, Loader2, TrendingUp, Clock, RefreshCw, RotateCcw, Wifi, WifiOff } from "lucide-react";
+import { AlertCircle, Loader2, TrendingUp, Clock, RefreshCw, RotateCcw, Wifi, WifiOff, Download } from "lucide-react";
 import { differenceInHours } from "date-fns";
 import { Button } from "../ui/button";
 import { useState, useEffect } from "react";
@@ -22,6 +22,7 @@ export function ExchangeRateReminder() {
     const [apiBcvRate, setApiBcvRate] = useState<number | null>(null);
     const [isFetchingApi, setIsFetchingApi] = useState(false);
     const [isOnline, setIsOnline] = useState(true);
+    const [installPrompt, setInstallPrompt] = useState<any>(null);
 
     useEffect(() => {
         setIsOnline(navigator.onLine);
@@ -29,7 +30,19 @@ export function ExchangeRateReminder() {
         const handleOffline = () => { setIsOnline(false); toast({ title: "Sin Conexión", variant: "destructive" }); };
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
-        return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
+
+        // Lógica de Instalación PWA
+        const handleBeforeInstallPrompt = (event: Event) => {
+            event.preventDefault();
+            setInstallPrompt(event);
+        };
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+        return () => { 
+            window.removeEventListener('online', handleOnline); 
+            window.removeEventListener('offline', handleOffline); 
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        };
     }, [toast]);
 
     const fetchApiRate = async () => {
@@ -100,6 +113,16 @@ export function ExchangeRateReminder() {
         setIsAutoUpdating(false);
     };
 
+    const handleInstallClick = async () => {
+        if (!installPrompt) return;
+        installPrompt.prompt();
+        const { outcome } = await installPrompt.userChoice;
+        if (outcome === 'accepted') {
+            toast({ title: '¡Aplicación Instalada!', description: 'El sistema se ha añadido a tu escritorio.' });
+        }
+        setInstallPrompt(null);
+    };
+
     if (isLoading) return <div className="p-2 border-b bg-muted/20 text-xs animate-pulse">Cargando tasas...</div>;
     
     const needsSync = apiBcvRate && Math.abs(apiBcvRate - bcvRate) > 0.01;
@@ -122,6 +145,18 @@ export function ExchangeRateReminder() {
                         {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
                         <span className="text-[10px] font-black uppercase tracking-wider">{isOnline ? "En Línea" : "Sin Internet"}</span>
                     </div>
+
+                    {installPrompt && (
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={handleInstallClick}
+                            className="h-8 px-2 text-[9px] font-black border-blue-200 text-blue-600 hover:bg-blue-50 shrink-0 animate-in fade-in zoom-in"
+                        >
+                            <Download className="mr-1.5 h-3 w-3" />
+                            INSTALAR APP
+                        </Button>
+                    )}
 
                     <div className="flex items-center gap-2 border-l pl-4 border-slate-200 shrink-0">
                         <TrendingUp className="w-4 h-4 text-primary" />
