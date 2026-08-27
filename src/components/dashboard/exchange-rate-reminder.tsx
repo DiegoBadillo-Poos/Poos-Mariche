@@ -33,7 +33,6 @@ export function ExchangeRateReminder() {
 
         const handleBeforeInstallPrompt = (event: any) => {
             event.preventDefault();
-            console.log("PWA: Evento de instalación capturado.");
             setInstallPrompt(event);
         };
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -146,25 +145,15 @@ export function ExchangeRateReminder() {
                         <span className="text-[10px] font-black uppercase tracking-wider">{isOnline ? "En Línea" : "Sin Internet"}</span>
                     </div>
 
-                    {installPrompt ? (
+                    {installPrompt && (
                         <Button 
                             variant="default" 
                             size="sm" 
                             onClick={handleInstallClick}
-                            className="h-8 px-4 text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white shadow-md shrink-0 animate-bounce"
+                            className="h-8 px-4 text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white shadow-md shrink-0 animate-in fade-in zoom-in-95 duration-300"
                         >
                             <Download className="mr-1.5 h-3.5 w-3.5" />
                             INSTALAR EN ESCRITORIO
-                        </Button>
-                    ) : (
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            disabled
-                            className="h-8 px-4 text-[9px] font-black uppercase border-blue-200 text-blue-400 bg-blue-50/50 shrink-0"
-                        >
-                            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                            PREPARANDO INSTALACIÓN...
                         </Button>
                     )}
 

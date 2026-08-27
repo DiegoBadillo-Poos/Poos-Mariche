@@ -144,7 +144,7 @@ export function SidebarNav() {
       </SidebarContent>
       <SidebarFooter className='mt-auto p-4 space-y-3'>
         
-        {installPrompt ? (
+        {installPrompt && (
             <Button 
                 onClick={handleInstall}
                 variant="default" 
@@ -153,11 +153,6 @@ export function SidebarNav() {
                 <Download className="mr-2 h-3.5 w-3.5" />
                 INSTALAR EN ESCRITORIO
             </Button>
-        ) : (
-            <div className="w-full p-2 rounded-md border border-slate-200 bg-slate-50 flex items-center gap-2 opacity-60">
-                <Loader2 className="h-3 w-3 animate-spin text-slate-400" />
-                <span className="text-[9px] font-black text-slate-500 uppercase">Buscando Navegador...</span>
-            </div>
         )}
 
         {isManagerMode && (
