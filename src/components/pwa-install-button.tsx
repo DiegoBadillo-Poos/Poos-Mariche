@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -34,8 +33,8 @@ export function PwaInstallButton() {
     
     if (outcome === 'accepted') {
       toast({
-        title: '¡Aplicación Instalada!',
-        description: 'La aplicación se ha añadido a tu escritorio.',
+        title: '¡Instalación Exitosa!',
+        description: 'La app ya está disponible en tu escritorio.',
       });
     }
     setInstallPrompt(null);
@@ -48,8 +47,8 @@ export function PwaInstallButton() {
   return (
     <Button 
       onClick={handleInstallClick} 
-      variant="outline" 
-      className="w-full justify-start h-10 text-[10px] font-black border-primary/30 text-primary hover:bg-primary/5 animate-in fade-in slide-in-from-bottom-2"
+      variant="default" 
+      className="w-full justify-start h-10 text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white animate-in fade-in slide-in-from-bottom-2 shadow-lg"
     >
       <Download className="mr-2 h-3.5 w-3.5" />
       INSTALAR EN ESCRITORIO

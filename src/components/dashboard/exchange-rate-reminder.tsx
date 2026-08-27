@@ -31,7 +31,7 @@ export function ExchangeRateReminder() {
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
 
-        // Lógica de Instalación PWA
+        // Lógica de Instalación PWA (Capturar el evento del navegador)
         const handleBeforeInstallPrompt = (event: any) => {
             event.preventDefault();
             setInstallPrompt(event);
@@ -118,7 +118,7 @@ export function ExchangeRateReminder() {
         installPrompt.prompt();
         const { outcome } = await installPrompt.userChoice;
         if (outcome === 'accepted') {
-            toast({ title: '¡Aplicación Instalada!', description: 'El sistema se ha añadido a tu escritorio.' });
+            toast({ title: '¡Instalación Exitosa!', description: 'La app ya está en tu escritorio.' });
         }
         setInstallPrompt(null);
     };
@@ -148,13 +148,13 @@ export function ExchangeRateReminder() {
 
                     {installPrompt && (
                         <Button 
-                            variant="outline" 
+                            variant="default" 
                             size="sm" 
                             onClick={handleInstallClick}
-                            className="h-8 px-2 text-[9px] font-black border-blue-200 text-blue-600 hover:bg-blue-50 shrink-0 animate-in fade-in zoom-in"
+                            className="h-8 px-4 text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white shadow-md shrink-0 animate-bounce"
                         >
-                            <Download className="mr-1.5 h-3 w-3" />
-                            INSTALAR APP
+                            <Download className="mr-1.5 h-3.5 w-3.5" />
+                            INSTALAR EN ESCRITORIO
                         </Button>
                     )}
 

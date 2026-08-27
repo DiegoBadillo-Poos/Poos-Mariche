@@ -32,7 +32,7 @@ import { Label } from "../ui/label";
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from "@/firebase";
 import { doc, runTransaction, query, orderBy, collection, type DocumentSnapshot } from "firebase/firestore";
 import { handlePrintAllTickets } from "./repair-ticket";
-import { User, Smartphone, Package, Search, Plus, Trash2, Loader2, DollarSign, Calculator, UserCheck, MapPin, Hammer, Minus, TicketPercent, CheckCircle2 } from "lucide-react";
+import { User, Smartphone, Package, Search, Plus, Trash2, Loader2, DollarSign, Calculator, UserCheck, MapPin, Hammer, Minus, TicketPercent, CheckCircle2, Lock } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
@@ -169,11 +169,12 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
         if (part.isWarranty) return sum;
         let price = 0;
         if (part.isManual) {
-            price = part.manualPrice || getDynamicPrice(part.costPrice);
+            price = part.isPromo ? (part.manualPriceOffer || 0) : (part.manualPrice || 0);
+            if (price === 0) price = getDynamicPrice(part.costPrice);
         } else {
             const product = products?.find(p => p.id === part.productId);
             if (product) {
-                price = part.isPromo && product.promoPrice ? product.promoPrice : getFinalPrice(product);
+                price = (part.isPromo && product.promoPrice) ? product.promoPrice : getFinalPrice(product);
             } else price = getDynamicPrice(part.costPrice);
         }
         return sum + (price * part.quantity);
@@ -225,7 +226,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
       setPartsPopoverOpen(false);
   };
 
-  const handleAddManualPart = (name: string, cost: number, fixedPrice?: number, isPromo: boolean = false) => {
+  const handleAddManualPart = (name: string, cost: number, priceBCV: number, priceOffer: number, isPromo: boolean = true) => {
       const newPart: ReservedPart & { isConsumed: boolean } = {
           productId: `manual-${Date.now()}`,
           productName: name.toUpperCase().trim(),
@@ -234,7 +235,8 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
           isPromo: isPromo,
           isWarranty: false,
           isManual: true,
-          manualPrice: fixedPrice,
+          manualPrice: priceBCV,
+          manualPriceOffer: priceOffer,
           isConsumed: false
       };
       form.setValue('reservedParts', [...reservedParts, newPart]);
@@ -266,37 +268,37 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
             const jobId = repairJob?.id || `R-${format(new Date(), "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
             const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', jobId);
 
-            // DATOS ORIGINALES DEL DOCUMENTO
-            const oldReserved = (repairJob?.reservedParts || []).filter(p => !p.isManual);
-            const oldConsumed = (repairJob?.consumedParts || []).filter(p => !p.isManual);
-            
-            // DATOS NUEVOS DEL FORMULARIO
-            const newParts = values.reservedParts.filter(p => !p.isManual);
-            const newReservedItems = newParts.filter(p => !p.isConsumed);
-            const newConsumedItems = newParts.filter(p => p.isConsumed);
+            // Filtrar repuestos del formulario
+            const allFormParts = values.reservedParts;
+            const newReservedItems = allFormParts.filter(p => !p.isConsumed);
+            const newConsumedItems = allFormParts.filter(p => p.isConsumed);
 
-            // 1. GESTIÓN DE RESERVADOS (Delta de reservedStock)
+            // Cálculo de deltas de inventario (solo para piezas que NO son manuales)
+            const oldInventoryReserved = (repairJob?.reservedParts || []).filter(p => !p.isManual);
+            const oldInventoryConsumed = (repairJob?.consumedParts || []).filter(p => !p.isManual);
+            const newInventoryReserved = newReservedItems.filter(p => !p.isManual);
+            const newInventoryConsumed = newConsumedItems.filter(p => !p.isManual);
+
             const reservedDeltas = new Map<string, { delta: number, name: string }>();
-            for (const old of oldReserved) {
+            for (const old of oldInventoryReserved) {
                 const current = reservedDeltas.get(old.productId) || { delta: 0, name: old.productName };
                 reservedDeltas.set(old.productId, { delta: current.delta - old.quantity, name: old.productName });
             }
-            for (const updated of newReservedItems) {
+            for (const updated of newInventoryReserved) {
                 const current = reservedDeltas.get(updated.productId) || { delta: 0, name: updated.productName };
                 reservedDeltas.set(updated.productId, { delta: current.delta + updated.quantity, name: updated.productName });
             }
 
-            // 2. GESTIÓN DE CONSUMIDOS (Retornos a stock físico si fueron borrados)
             const stockReturns = new Map<string, { qty: number, name: string }>();
-            for (const old of oldConsumed) {
-                const isStillInForm = newConsumedItems.some(n => n.productId === old.productId);
+            for (const old of oldInventoryConsumed) {
+                const isStillInForm = newInventoryConsumed.some(n => n.productId === old.productId);
                 if (!isStillInForm) {
                     const current = stockReturns.get(old.productId) || { qty: 0, name: old.productName };
                     stockReturns.set(old.productId, { qty: current.qty + old.quantity, name: old.productName });
                 }
             }
 
-            // APLICAR DELTAS DE RESERVA
+            // Aplicar cambios en inventario (Firestore)
             for (const [pid, change] of Array.from(reservedDeltas.entries())) {
                 if (change.delta === 0) continue;
                 const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
@@ -309,7 +311,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 }
             }
 
-            // APLICAR RETORNOS FÍSICOS (Si se borró un consumido)
             for (const [pid, info] of Array.from(stockReturns.entries())) {
                 const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
                 if (pSnap.exists()) {
@@ -318,15 +319,14 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 }
             }
 
-            // LÓGICA DE FINALIZACIÓN (CONSUMIR LO QUE QUEDE)
             let finalReservedParts = [...newReservedItems];
             let finalConsumedParts = [...newConsumedItems];
             let partsConsumed = !!repairJob?.partsConsumed;
             let completionData: any = {};
 
+            // Si se marca como completado, mover todo lo reservado a consumido (y descontar stock físico)
             if (values.status === 'Completado') {
-                for (const part of newReservedItems) {
-                    if (part.isManual) continue;
+                for (const part of newInventoryReserved) {
                     const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', part.productId));
                     if (pSnap.exists()) {
                         const pData = pSnap.data() as Product;
@@ -343,6 +343,10 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 partsConsumed = true;
             }
 
+            // Stripping UI flags before saving
+            const finalReserved = finalReservedParts.map(({isConsumed, ...p}) => p);
+            const finalConsumed = finalConsumedParts.map(({isConsumed, ...p}) => p);
+
             const finalData = cleanObject({ 
                 ...values, id: jobId, 
                 estimatedCost: Number(estimatedTotal.toFixed(2)),
@@ -350,8 +354,8 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 isPaid: currentPaid >= (estimatedTotal - 0.01),
                 status: (currentPaid >= (estimatedTotal - 0.01) && values.status === 'Pendiente') ? 'Pagado' : values.status,
                 createdAt: repairJob?.createdAt || new Date().toISOString(),
-                reservedParts: finalReservedParts.map(({isConsumed, ...p}) => p), 
-                consumedParts: finalConsumedParts.map(({isConsumed, ...p}) => p), 
+                reservedParts: finalReserved, 
+                consumedParts: finalConsumed, 
                 partsConsumed, isPromo: effectiveIsPromo, ...completionData
             });
             
@@ -360,7 +364,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
         });
 
         localStorage.removeItem(DRAFT_KEY);
-        toast({ title: "Sincronizado" });
+        toast({ title: "Orden Sincronizada" });
         if (!repairJob) handlePrintAllTickets({ repairJob: result as RepairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, () => {});
         setOpen(false);
     } catch (e: any) {
@@ -373,7 +377,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-hidden flex flex-col p-0">
         <div className="p-4 sm:p-6 pb-2 shrink-0">
             <div className="flex justify-between items-center mb-2 sm:mb-4">
                 <DialogHeader className="flex-1">
@@ -493,7 +497,12 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                             )}
                             {reservedParts.map((part) => {
                                 const pData = products?.find(p => p.id === part.productId);
-                                let price = part.isManual && part.manualPrice ? part.manualPrice : (part.isPromo && pData?.promoPrice ? pData.promoPrice : getFinalPrice(pData || { costPrice: part.costPrice } as Product));
+                                let price = 0;
+                                if (part.isManual) {
+                                    price = part.isPromo ? (part.manualPriceOffer || 0) : (part.manualPrice || 0);
+                                } else {
+                                    price = (part.isPromo && pData?.promoPrice) ? pData.promoPrice : getFinalPrice(pData || { costPrice: part.costPrice } as Product);
+                                }
                                 if (part.isWarranty) price = 0;
 
                                 return (
@@ -532,7 +541,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                                                     <TooltipContent><p>Alternar Tasa de Reposición (Oferta)</p></TooltipContent>
                                                 </Tooltip>
                                             </TooltipProvider>
-                                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleRemovePart(part.productId)}>
+                                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleRemovePart(part.productId)} disabled={part.isConsumed}>
                                                 <Trash2 className="w-3.5 h-3.5" />
                                             </Button>
                                         </div>
@@ -575,21 +584,37 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
   );
 }
 
-function ManualQuickAddDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean, onOpenChange: (v: boolean) => void, onAdd: (name: string, cost: number, fixed?: number, isPromo?: boolean) => void }) {
+function ManualQuickAddDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean, onOpenChange: (v: boolean) => void, onAdd: (name: string, cost: number, bcv: number, offer: number, isPromo?: boolean) => void }) {
     const [name, setName] = useState("");
     const [cost, setCost] = useState("");
-    const [isFixed, setIsFixed] = useState(false);
-    const [fixedPrice, setFixedPrice] = useState("");
-    const [isPromo, setIsPromo] = useState(false);
-    const { getDynamicPrice, profitMargin, bcvRate, format: formatCurrency } = useCurrency();
+    const [priceBCV, setPriceBCV] = useState("");
+    const [priceOffer, setPriceOffer] = useState("");
+    const [isPromo, setIsPromo] = useState(true);
+    const { getDynamicPrice, profitMargin, bcvRate, parallelRate, format: formatCurrency } = useCurrency();
 
-    const suggestedBCV = useMemo(() => cost ? getDynamicPrice(Number(cost)) : 0, [cost, getDynamicPrice]);
-    const suggestedOffer = useMemo(() => cost ? Number(cost) * (1 + profitMargin / 100) : 0, [cost, profitMargin]);
+    useEffect(() => {
+        const c = parseFloat(cost) || 0;
+        if (c > 0) {
+            const bcv = getDynamicPrice(c);
+            const offer = c * (1 + profitMargin / 100);
+            setPriceBCV(bcv.toFixed(2));
+            setPriceOffer(offer.toFixed(2));
+        } else {
+            setPriceBCV("");
+            setPriceOffer("");
+        }
+    }, [cost, getDynamicPrice, profitMargin]);
 
     const handleConfirm = () => {
-        const finalPrice = (isFixed || isPromo) ? (Number(fixedPrice) || (isPromo ? suggestedOffer : suggestedBCV)) : undefined;
-        onAdd(name, Number(cost), finalPrice, isPromo);
-        setName(""); setCost(""); setFixedPrice(""); setIsFixed(false); setIsPromo(false);
+        onAdd(
+            name, 
+            parseFloat(cost) || 0, 
+            parseFloat(priceBCV) || 0, 
+            parseFloat(priceOffer) || 0, 
+            isPromo
+        );
+        
+        setName(""); setCost(""); setPriceBCV(""); setPriceOffer(""); setIsPromo(true);
         onOpenChange(false);
     };
 
@@ -602,56 +627,56 @@ function ManualQuickAddDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean
                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Descripción del Servicio/Pieza</Label>
                         <Input value={name} onChange={(e) => setName(e.target.value.toUpperCase())} placeholder="EJ: DESCRIPCIÓN DEL ARTÍCULO..." className="uppercase h-10" />
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-bold uppercase text-muted-foreground">Costo ($)</Label>
-                            <Input type="number" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" className="h-10" />
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-bold uppercase text-blue-600">Sugerido BCV</Label>
-                            <div className="h-10 flex flex-col justify-center px-2 bg-blue-50 border border-blue-100 rounded text-blue-700">
-                                <div className="text-[11px] font-black">${suggestedBCV.toFixed(2)}</div>
-                                <div className="text-[8px] font-bold leading-none">Bs {formatCurrency(suggestedBCV * bcvRate)}</div>
+                    
+                    <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Costo Inversión ($)</Label>
+                        <Input type="number" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" className="h-10" />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className={cn(
+                            "p-3 rounded-xl border-2 transition-all space-y-2",
+                            !isPromo ? "bg-blue-50 border-blue-300 shadow-sm" : "bg-white border-slate-100 opacity-60"
+                        )}>
+                            <Label className="text-[10px] font-black uppercase text-blue-700">Sugerido BCV</Label>
+                            <div className="relative">
+                                <DollarSign className="absolute left-2 top-2 h-3.5 w-3.5 text-blue-600" />
+                                <Input 
+                                    type="number" 
+                                    value={priceBCV} 
+                                    onChange={(e) => setPriceBCV(e.target.value)} 
+                                    className="pl-7 h-9 border-blue-200 font-black text-base"
+                                    placeholder="0.00"
+                                />
                             </div>
+                            <p className="text-[8px] font-bold text-blue-600 leading-none">Eq: Bs {formatCurrency((parseFloat(priceBCV) || 0) * bcvRate)}</p>
                         </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-bold uppercase text-green-600">Sugerido Oferta</Label>
-                            <div className="h-10 flex items-center px-2 bg-green-50 border border-blue-100 rounded text-[11px] font-black text-green-700">${suggestedOffer.toFixed(2)}</div>
+
+                        <div className={cn(
+                            "p-3 rounded-xl border-2 transition-all space-y-2",
+                            isPromo ? "bg-green-50 border-green-300 shadow-sm" : "bg-white border-slate-100 opacity-60"
+                        )}>
+                            <Label className="text-[10px] font-black uppercase text-green-700">Sugerido Oferta</Label>
+                            <div className="relative">
+                                <DollarSign className="absolute left-2 top-2 h-3.5 w-3.5 text-green-600" />
+                                <Input 
+                                    type="number" 
+                                    value={priceOffer} 
+                                    onChange={(e) => setPriceOffer(e.target.value)} 
+                                    className="pl-7 h-9 border-green-200 font-black text-base"
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            <p className="text-[8px] font-bold text-green-600 leading-none">Eq: Bs {formatCurrency((parseFloat(priceOffer) || 0) * (parallelRate || 1))}</p>
                         </div>
                     </div>
 
-                    <div className="space-y-3 p-3 bg-muted/50 rounded-lg border border-dashed">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-xs font-bold uppercase cursor-pointer" htmlFor="fix-p">Precio Fijo</Label>
-                            <Switch id="fix-p" checked={isFixed} onCheckedChange={setIsFixed} />
+                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                        <div className="flex items-center gap-2">
+                            <TicketPercent className={cn("w-4 h-4", isPromo ? "text-blue-600" : "text-slate-400")} />
+                            <Label className="text-xs font-black uppercase cursor-pointer" htmlFor="promo-mode">Usar Tasa de Reposición</Label>
                         </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex flex-col">
-                                <Label className="text-xs font-bold uppercase text-blue-600 cursor-pointer" htmlFor="off-p">Oferta (Reposición)</Label>
-                                <p className="text-[8px] text-muted-foreground">Tasa paralela para cobro en Bs.</p>
-                            </div>
-                            <Switch id="off-p" checked={isPromo} onCheckedChange={setIsPromo} />
-                        </div>
-                        
-                        {(isFixed || isPromo) && (
-                            <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-200">
-                                <Label className="text-[10px] font-bold uppercase text-primary">
-                                    Precio Final a Cobrar ($)
-                                </Label>
-                                <div className="relative">
-                                    <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                                    <Input 
-                                        type="number" 
-                                        step="0.01" 
-                                        value={fixedPrice} 
-                                        onChange={(e) => setFixedPrice(e.target.value)} 
-                                        placeholder={isPromo ? suggestedOffer.toFixed(2) : suggestedBCV.toFixed(2)} 
-                                        className="font-black text-lg h-11 pl-8" 
-                                        autoFocus 
-                                    />
-                                </div>
-                            </div>
-                        )}
+                        <Switch id="promo-mode" checked={isPromo} onCheckedChange={setIsPromo} />
                     </div>
                 </div>
                 <DialogFooter><Button onClick={handleConfirm} disabled={!name || !cost} className="w-full h-11 uppercase font-bold text-sm shadow-md">Confirmar Añadido</Button></DialogFooter>

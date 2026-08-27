@@ -41,7 +41,8 @@ export type ReservedPart = {
   isPromo?: boolean;
   isWarranty?: boolean;
   isManual?: boolean;
-  manualPrice?: number; // Para precios fijos en repuestos manuales
+  manualPrice?: number; // Precio base (BCV)
+  manualPriceOffer?: number; // Precio oferta (Reposición)
 }
 
 export type RepairStatus = 'Pendiente' | 'Pagado' | 'Completado' | 'Garantía';
