@@ -12,7 +12,7 @@ type ReconciliationTicketProps = {
     businessName?: string;
 }
 
-const paymentMethodsOrder: PaymentMethod[] = ['Efectivo USD', 'Efectivo Bs', 'Tarjeta', 'Pago Móvil', 'Transferencia'];
+const paymentMethodsOrder: PaymentMethod[] = ['Efectivo USD', 'Efectivo Bs', 'Tarjeta', 'Pago Móvil', 'Transferencia', 'USDT / Crypto'];
 
 export function ReconciliationTicket({ reconciliation, currency, businessName }: ReconciliationTicketProps) {
     const { format, getSymbol } = currency;
@@ -56,15 +56,15 @@ export function ReconciliationTicket({ reconciliation, currency, businessName }:
             <div className="cash-flow-section mt-3 pt-1 border-t" style={{ borderTopStyle: 'dashed' }}>
                  <div className="flex-row-between">
                     <span>PAGOS RECIBIDOS:</span>
-                    <span className="bold-header">+${format(reconciliation.totalPaymentsReceived ?? 0, 'USD')}</span>
+                    <span className="bold-header">+${ format(reconciliation.totalPaymentsReceived ?? 0, 'USD') }</span>
                 </div>
                 <div className="flex-row-between">
                     <span>VUELTOS ENTREGADOS:</span>
-                    <span className="bold-header">-${format(reconciliation.totalChangeGiven ?? 0, 'USD')}</span>
+                    <span className="bold-header">-${ format(reconciliation.totalChangeGiven ?? 0, 'USD') }</span>
                 </div>
                 <div className="flex-row-between bold-header mt-1" style={{ fontSize: '9pt' }}>
                     <span>NETO ESPERADO:</span>
-                    <span>${format(reconciliation.totalExpected, 'USD')}</span>
+                    <span>${ format(reconciliation.totalExpected, 'USD') }</span>
                 </div>
             </div>
 
@@ -73,7 +73,7 @@ export function ReconciliationTicket({ reconciliation, currency, businessName }:
                 {paymentMethodsOrder.map(method => {
                     if (!reconciliation.paymentMethods || !reconciliation.paymentMethods[method]) return null;
                     const details = reconciliation.paymentMethods[method]!;
-                    const isUSD = method === 'Efectivo USD';
+                    const isUSD = method === 'Efectivo USD' || method === 'USDT / Crypto';
                     const symbol = isUSD ? '$' : 'Bs';
                     
                     let methodStatus = "CUADRADO";

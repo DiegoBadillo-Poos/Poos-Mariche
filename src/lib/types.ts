@@ -194,9 +194,11 @@ export type HeldSale = {
   name: string;
   createdAt: string;
   items: CartItem[];
+  customerName?: string;
+  customerID?: string;
 };
 
-export type PaymentMethod = 'Efectivo USD' | 'Efectivo Bs' | 'Tarjeta' | 'Pago Móvil' | 'Transferencia' | 'Tarjeta / Pago Móvil';
+export type PaymentMethod = 'Efectivo USD' | 'Efectivo Bs' | 'Tarjeta' | 'Pago Móvil' | 'Transferencia' | 'Tarjeta / Pago Móvil' | 'USDT / Crypto';
 
 export type Payment = {
   method: PaymentMethod;
@@ -209,6 +211,8 @@ export type Sale = {
   items: (CartItem & { price: number })[];
   repairJobId?: string;
   fiadoId?: string;
+  customerName?: string;
+  customerID?: string;
   consumedParts?: ReservedPart[];
   subtotal: number;
   discount: number;
@@ -274,6 +278,7 @@ export type AppSettings = {
         'Pago Móvil'?: number;
         'Transferencia'?: number;
         'Tarjeta / Pago Móvil'?: number;
+        'USDT / Crypto'?: number;
     };
 };
 

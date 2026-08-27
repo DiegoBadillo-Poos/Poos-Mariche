@@ -8,7 +8,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { ReceiptView, handlePrintReceipt } from "../pos/receipt-view";
 import { Button } from "../ui/button";
-import { Printer, Undo2, AlertTriangle, Calendar as CalendarIcon, Search, X as ClearIcon, Filter, CreditCard, Banknote, Landmark, Smartphone, DollarSign, ArrowDownLeft, ArrowUpRight, Sigma, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Printer, Undo2, AlertTriangle, Calendar as CalendarIcon, Search, X as ClearIcon, Filter, CreditCard, Banknote, Landmark, Smartphone, DollarSign, ArrowDownLeft, ArrowUpRight, Sigma, Loader2, ChevronLeft, ChevronRight, User, Coins } from "lucide-react";
 import React, { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "../ui/skeleton";
@@ -33,14 +33,14 @@ type TransactionListProps = {
     isLoading?: boolean;
 };
 
-const ITEMS_PER_PAGE = 5;
 const PAYMENT_METHODS: (PaymentMethod | 'ALL')[] = [
     'ALL',
     'Efectivo USD',
     'Efectivo Bs',
     'Tarjeta',
     'Pago Móvil',
-    'Transferencia'
+    'Transferencia',
+    'USDT / Crypto'
 ];
 
 const REFUND_METHODS: PaymentMethod[] = [
@@ -57,7 +57,10 @@ const methodIcons: Record<string, any> = {
     'Pago Móvil': Smartphone,
     'Transferencia': Banknote,
     'Tarjeta / Pago Móvil': Smartphone,
+    'USDT / Crypto': Coins,
 };
+
+const ITEMS_PER_PAGE = 5;
 
 const RefundButton = ({ sale }: { sale: Sale }) => {
     const { firestore, user } = useFirebase();
@@ -291,7 +294,8 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                 const term = searchRef.toLowerCase();
                 const matchesRef = sale.payments.some(p => p.reference?.toLowerCase().includes(term));
                 const matchesId = sale.id?.toLowerCase().includes(term);
-                if (!matchesRef && !matchesId) return false;
+                const matchesCustomer = sale.customerName?.toLowerCase().includes(term) || sale.customerID?.toLowerCase().includes(term);
+                if (!matchesRef && !matchesId && !matchesCustomer) return false;
             }
 
             return true;
@@ -320,7 +324,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
             if (sale.status === 'refunded') {
                 if (sale.refundPaymentMethod === methodFilter) {
                     const refundAmountUSD = sale.actualPaidAmount ?? sale.totalAmount;
-                    total -= methodFilter === 'Efectivo USD' ? refundAmountUSD : refundAmountUSD * (sale.bcvRateAtTime || currentBcvRate);
+                    total -= (methodFilter === 'Efectivo USD' || methodFilter === 'USDT / Crypto') ? refundAmountUSD : refundAmountUSD * (sale.bcvRateAtTime || currentBcvRate);
                 }
                 return;
             }
@@ -339,7 +343,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
             }
         });
 
-        const isBS = methodFilter !== 'Efectivo USD';
+        const isBS = methodFilter !== 'Efectivo USD' && methodFilter !== 'USDT / Crypto';
         const amountUSD = isBS ? convert(total, 'Bs', 'USD') : total;
         const amountBS = isBS ? total : convert(total, 'USD', 'Bs');
 
@@ -391,11 +395,11 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                 </div>
 
                 <div className="space-y-1.5">
-                    <Label className="text-xs uppercase font-bold text-muted-foreground">Buscar Referencia / ID</Label>
+                    <Label className="text-xs uppercase font-bold text-muted-foreground">Buscar Cliente / Ref / ID</Label>
                     <div className="relative">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input 
-                            placeholder="EJ: 1234, S-2401..." 
+                            placeholder="EJ: CLIENTE, 1234, S-2401..." 
                             className="pl-8 uppercase" 
                             value={searchRef}
                             onChange={(e) => setSearchRef(e.target.value.toUpperCase())}
@@ -447,13 +451,21 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                             <AccordionItem value={sale.id!} key={sale.id}>
                                 <AccordionTrigger className="hover:no-underline">
                                     <div className="flex justify-between w-full pr-4">
-                                        <div className="text-left">
-                                            <p className="font-semibold">{sale.transactionDate ? format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es }) : 'Sin fecha'}</p>
-                                            <p className="text-xs text-muted-foreground font-mono">{sale.id}</p>
+                                        <div className="text-left flex flex-col items-start gap-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-semibold">{sale.transactionDate ? format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es }) : 'Sin fecha'}</p>
+                                                <p className="text-[10px] text-muted-foreground font-mono uppercase bg-muted/50 px-1.5 py-0.5 rounded">{sale.id}</p>
+                                            </div>
+                                            {(sale.customerName || sale.customerID) && (
+                                                <div className="flex items-center gap-1.5 text-[10px] font-black text-primary uppercase">
+                                                    <User className="w-3 h-3" />
+                                                    <span>{sale.customerName || 'S/N'} {sale.customerID ? `(${sale.customerID})` : ''}</span>
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-4">
-                                            {sale.reconciliationId && <Badge variant="outline" className="border-green-600 text-green-600">Cerrada</Badge>}
-                                            {sale.status === 'refunded' && <Badge variant="destructive" className="animate-pulse">REEMBOLSADO</Badge>}
+                                            {sale.reconciliationId && <Badge variant="outline" className="border-green-600 text-green-600 text-[10px] font-black">CERRADA</Badge>}
+                                            {sale.status === 'refunded' && <Badge variant="destructive" className="animate-pulse text-[10px] font-black">REEMBOLSADO</Badge>}
                                             <div className="text-right">
                                                 <p className={cn("font-black text-lg leading-none", sale.status === 'refunded' && "text-muted-foreground line-through")}>
                                                     {getSymbol()}{formatCurrency(sale.actualPaidAmount ?? sale.totalAmount)}
@@ -473,6 +485,18 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                             </Button>
                                             <RefundButton sale={sale} />
                                         </div>
+
+                                        {(sale.customerName || sale.customerID) && (
+                                            <div className="bg-white p-3 rounded-lg border shadow-sm space-y-1">
+                                                <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-1.5">
+                                                    <User className="w-3 h-3" /> Datos del Cliente
+                                                </p>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-black text-xs uppercase">{sale.customerName || 'N/A'}</span>
+                                                    <span className="font-mono text-xs text-muted-foreground">{sale.customerID || 'N/A'}</span>
+                                                </div>
+                                            </div>
+                                        )}
                                         
                                         <div className="space-y-2">
                                             <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Productos y Servicios</p>
@@ -513,7 +537,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                                 <div className="space-y-1.5">
                                                     {sale.payments.map((p, idx) => {
                                                         const Icon = methodIcons[p.method] || DollarSign;
-                                                        const isBS = p.method !== 'Efectivo USD';
+                                                        const isBS = p.method !== 'Efectivo USD' && p.method !== 'USDT / Crypto';
                                                         return (
                                                             <div key={idx} className="flex justify-between items-center p-2 bg-white rounded-md border text-xs shadow-sm">
                                                                 <div className="flex items-center gap-2">
@@ -540,7 +564,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                                     <div className="space-y-1.5">
                                                         {sale.changeGiven.map((c, idx) => {
                                                             const Icon = methodIcons[c.method] || DollarSign;
-                                                            const isBS = c.method !== 'Efectivo USD';
+                                                            const isBS = c.method !== 'Efectivo USD' && c.method !== 'USDT / Crypto';
                                                             return (
                                                                 <div key={idx} className="flex justify-between items-center p-2 bg-white rounded-md border text-xs shadow-sm border-amber-100">
                                                                     <div className="flex items-center gap-2">

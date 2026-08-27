@@ -49,10 +49,19 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
                 <p className="meta-info">{sale.id}</p>
                 <p className="meta-info mt-1">Fecha: {format(parseISO(sale.transactionDate), "dd/MM/yyyy HH:mm:ss", { locale: es })}</p>
             </div>
+
+            {(sale.customerName || sale.customerID) && !isRepairReceipt && (
+                <div className="customer-info-section mb-2 border-y py-1 text-center">
+                    <p className="section-subtitle">CLIENTE</p>
+                    {sale.customerName && <p className="meta-info bold-header">{sale.customerName.toUpperCase()}</p>}
+                    {sale.customerID && <p className="meta-info font-bold">C.I./RIF: {sale.customerID}</p>}
+                </div>
+            )}
             
             {isRepairReceipt && (
                 <div className="repair-info-section mb-2 border-y py-1">
                     <p className="section-subtitle text-center">DATOS DEL SERVICIO</p>
+                    <p className="meta-info"><span className="bold-header">CLIENTE:</span> {sale.customerName?.toUpperCase() || repairData.customerName.toUpperCase()}</p>
                     <p className="meta-info"><span className="bold-header">TRABAJO:</span> {sale.repairJobId}</p>
                     <p className="meta-info"><span className="bold-header">EQUIPO:</span> {repairData.deviceMake.toUpperCase()} {repairData.deviceModel.toUpperCase()}</p>
                 </div>

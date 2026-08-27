@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -69,7 +68,9 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
         lastSaleId: string,
         paymentMethods: Set<string>,
         bcvRate: number,
-        parallelRate: number
+        parallelRate: number,
+        customerName?: string,
+        customerID?: string
     }>();
 
     const productLines: any[] = [];
@@ -113,6 +114,8 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
             
             productLines.push({
                 'Fecha': format(new Date(sale.transactionDate), 'dd/MM/yyyy HH:mm'),
+                'Cliente': sale.customerName || 'GENERAL',
+                'Cédula/RIF': sale.customerID || 'N/A',
                 'Producto/Servicio': item.name + (item.isPromo ? ' [OFERTA]' : ''),
                 'ID Transacción': sale.id,
                 'Costo Inversión ($)': Number(cost.toFixed(2)),
@@ -148,6 +151,8 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
                             existing.lastSaleId = sale.id!;
                             existing.bcvRate = saleBcvRate;
                             existing.parallelRate = saleParallelRate;
+                            existing.customerName = sale.customerName || repairJob.customerName;
+                            existing.customerID = sale.customerID || repairJob.customerID;
                         }
                     } else {
                         repairsActivity.set(rId, {
@@ -158,7 +163,9 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
                             lastSaleId: sale.id!,
                             paymentMethods: new Set([sale.paymentMethod]),
                             bcvRate: saleBcvRate,
-                            parallelRate: saleParallelRate
+                            parallelRate: saleParallelRate,
+                            customerName: sale.customerName || repairJob.customerName,
+                            customerID: sale.customerID || repairJob.customerID
                         });
                     }
                 }
@@ -181,7 +188,9 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
 
         return {
             'Fecha': format(new Date(entry.lastDate), 'dd/MM/yyyy HH:mm'),
-            'Producto/Servicio': `REPARACIÓN: ${repair.deviceMake} ${repair.deviceModel} (${repair.customerName})` + (repair.isPromo ? ' [OFERTA]' : ''),
+            'Cliente': entry.customerName || repair.customerName,
+            'Cédula/RIF': entry.customerID || repair.customerID,
+            'Producto/Servicio': `REPARACIÓN: ${repair.deviceMake} ${repair.deviceModel}` + (repair.isPromo ? ' [OFERTA]' : ''),
             'ID Transacción': entry.lastSaleId,
             'Costo Inversión ($)': Number(proratedCost.toFixed(2)),
             'Precio Venta Nom. ($)': Number(nominalIncome.toFixed(2)),

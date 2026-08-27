@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
@@ -22,7 +21,7 @@ type CashReconciliationDialogProps = {
   openSales: Sale[];
 };
 
-const paymentMethodsOrder: PaymentMethod[] = ['Efectivo USD', 'Efectivo Bs', 'Tarjeta', 'Pago Móvil', 'Transferencia'];
+const paymentMethodsOrder: PaymentMethod[] = ['Efectivo USD', 'Efectivo Bs', 'Tarjeta', 'Pago Móvil', 'Transferencia', 'USDT / Crypto'];
 
 export function CashReconciliationDialog({ openSales }: CashReconciliationDialogProps) {
   const { firestore, user } = useFirebase();
@@ -39,6 +38,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
     'Tarjeta': 0,
     'Pago Móvil': 0,
     'Transferencia': 0,
+    'USDT / Crypto': 0,
   });
 
   const profileRef = useMemoFirebase(() => 
@@ -60,6 +60,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
       'Tarjeta': 0,
       'Pago Móvil': 0,
       'Transferencia': 0,
+      'USDT / Crypto': 0,
     };
     let paymentsUSD = 0;
     let changeUSD = 0;
@@ -75,14 +76,14 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
           totals[payment.method] += payment.amount;
         }
         // Usamos tasa de reposición (true) para la reconciliación del cajón
-        paymentsUSD += payment.method === 'Efectivo USD' ? payment.amount : convert(payment.amount, 'Bs', 'USD', true);
+        paymentsUSD += (payment.method === 'Efectivo USD' || payment.method === 'USDT / Crypto') ? payment.amount : convert(payment.amount, 'Bs', 'USD', true);
       });
       if (sale.changeGiven) {
           sale.changeGiven.forEach(change => {
               if (totals[change.method] !== undefined) {
                   totals[change.method] -= change.amount;
               }
-              changeUSD += change.method === 'Efectivo USD' ? change.amount : convert(change.amount, 'Bs', 'USD', true);
+              changeUSD += (change.method === 'Efectivo USD' || change.method === 'USDT / Crypto') ? change.amount : convert(change.amount, 'Bs', 'USD', true);
           });
       }
     });
@@ -108,7 +109,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
   const totalCountedInUSD = useMemo(() => {
      return Object.entries(countedAmounts).reduce((acc, [method, amount]) => {
         const typedMethod = method as PaymentMethod;
-        if (typedMethod === 'Efectivo USD') {
+        if (typedMethod === 'Efectivo USD' || typedMethod === 'USDT / Crypto') {
             return acc + amount;
         }
         // Valuamos lo contado físicamente contra la tasa de reposición
@@ -133,6 +134,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
       'Tarjeta': 0,
       'Pago Móvil': 0,
       'Transferencia': 0,
+      'USDT / Crypto': 0,
     });
   };
   
@@ -273,7 +275,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
                                         <div key={method} className="space-y-1.5 p-3 rounded-lg bg-slate-50 border transition-all focus-within:border-primary/50">
                                             <Label htmlFor={`counted-${method}`} className="text-[10px] font-black uppercase text-muted-foreground">{method}</Label>
                                             <div className="relative">
-                                                <span className="absolute left-3 top-2.5 font-black text-slate-400 text-sm">{method === 'Efectivo USD' ? '$' : 'Bs'}</span>
+                                                <span className="absolute left-3 top-2.5 font-black text-slate-400 text-sm">{(method === 'Efectivo USD' || method === 'USDT / Crypto') ? '$' : 'Bs'}</span>
                                                 <Input 
                                                     id={`counted-${method}`} 
                                                     type="number" 
@@ -310,7 +312,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
                                 {paymentMethodsOrder.map(method => {
                                     if (expectedAmounts[method] === 0 && countedAmounts[method] === 0) return null;
                                     const diff = differences[method];
-                                    const symbol = method === 'Efectivo USD' ? '$' : 'Bs';
+                                    const symbol = (method === 'Efectivo USD' || method === 'USDT / Crypto') ? '$' : 'Bs';
                                     
                                     let statusLabel = "";
                                     if (diff > 0.01) statusLabel = "(SOBRANTE)";

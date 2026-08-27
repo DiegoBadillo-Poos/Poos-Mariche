@@ -4,7 +4,7 @@ import type { CartItem, Payment, PaymentMethod, Sale, Product, UserProfile, Repa
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { useState, type ReactNode, useMemo, useEffect } from "react";
-import { CreditCard, Landmark, Smartphone, DollarSign, Printer, Trash2, Banknote, AlertCircle, Loader2 } from "lucide-react";
+import { CreditCard, Landmark, Smartphone, DollarSign, Printer, Trash2, Banknote, AlertCircle, Loader2, Coins } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ReceiptView, handlePrintReceipt } from "./receipt-view";
 import { useCurrency } from "@/hooks/use-currency";
@@ -35,6 +35,7 @@ const paymentMethodOptions: { value: PaymentMethod, label: string, icon: ReactNo
     { value: 'Tarjeta', label: 'Tarjeta', icon: <CreditCard className="w-5 h-5"/>, hasReference: true, isBs: true },
     { value: 'Pago Móvil', label: 'Pago Móvil', icon: <Smartphone className="w-5 h-5"/>, hasReference: true, isBs: true },
     { value: 'Transferencia', label: 'Transferencia', icon: <Banknote className="w-5 h-5"/>, hasReference: true, isBs: true },
+    { value: 'USDT / Crypto', label: 'USDT / Crypto', icon: <Coins className="w-5 h-5"/>, hasReference: true, isBs: false },
 ];
 
 const changeMethodOptions: { value: PaymentMethod, label: string, icon: ReactNode, isBs: boolean }[] = [
@@ -78,7 +79,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   const totalPaid = useMemo(() => {
     if (currencyLoading) return 0;
     return payments.reduce((acc, payment) => {
-      if (payment.method === 'Efectivo USD') {
+      if (payment.method === 'Efectivo USD' || payment.method === 'USDT / Crypto') {
         return acc + payment.amount;
       }
       // CRITICAL: Usamos Tasa de Reposición (Parallel) SOLO si hay promociones, sino BCV
@@ -89,7 +90,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   const totalGivenInUSD = useMemo(() => {
       if (currencyLoading) return 0;
       return changePayments.reduce((acc, payment) => {
-          if (payment.method === 'Efectivo USD') {
+          if (payment.method === 'Efectivo USD' || payment.method === 'USDT / Crypto') {
               return acc + payment.amount;
           }
           return acc + convert(payment.amount, 'Bs', 'USD', hasPromo);
@@ -308,7 +309,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                                     type="text"
                                                     value={p.reference || ''}
                                                     onChange={(e) => handleUpdatePayment(p.id, 'reference', e.target.value)}
-                                                    placeholder="Ref."
+                                                    placeholder="Ref/Correo."
                                                     className="flex-1 h-9 text-sm font-mono font-bold"
                                                     disabled={isSubmitting}
                                                 />

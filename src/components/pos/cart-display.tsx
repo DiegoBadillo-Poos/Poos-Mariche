@@ -2,20 +2,23 @@
 
 import type { CartItem, Payment, Product, Sale, RepairJob, ReservedPart } from "@/lib/types";
 import { Button } from "../ui/button";
-import { Trash2, TicketPercent, Gift, ParkingSquare, ShieldAlert } from "lucide-react";
-import { useState } from "react";
+import { Trash2, TicketPercent, Gift, ParkingSquare, ShieldAlert, UserPlus, UserX, UserCheck, Search, Loader2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
 import { CheckoutDialog } from "./checkout-dialog";
 import { useCurrency } from "@/hooks/use-currency";
 import { ScrollArea } from "../ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
-import { doc, runTransaction, type DocumentSnapshot } from "firebase/firestore";
+import { useFirebase, useDoc, useMemoFirebase, useCollection } from "@/firebase";
+import { doc, runTransaction, type DocumentSnapshot, collection, query, orderBy, limit } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { HoldSaleDialog } from "./hold-sale-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 
 type CartDisplayProps = {
   cart: CartItem[];
@@ -35,7 +38,6 @@ function generateSaleId() {
     return `S-${format(date, "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
-// Función de utilidad para limpiar objetos de valores undefined antes de enviar a Firestore
 function cleanObject(obj: any): any {
     if (obj === null || obj === undefined) return obj;
     const cleaned = { ...obj };
@@ -53,17 +55,119 @@ function cleanObject(obj: any): any {
     return cleaned;
 }
 
+function CustomerDialog({ onSave, currentName, currentID, sales }: { onSave: (name: string, id: string) => void, currentName: string, currentID: string, sales: Sale[] }) {
+    const [open, setOpen] = useState(false);
+    const [name, setName] = useState(currentName);
+    const [id, setId] = useState(currentID);
+    const { toast } = useToast();
+
+    // Sincronizar estados cuando cambia el diálogo o los props
+    useEffect(() => {
+        if (open) {
+            setName(currentName);
+            setId(currentID);
+        }
+    }, [open, currentName, currentID]);
+
+    const foundCustomer = useMemo(() => {
+        if (!id || id.length < 5 || !sales) return null;
+        // Buscamos la venta más reciente con ese ID de cliente
+        const match = sales.find(s => s.customerID?.toUpperCase().trim() === id.toUpperCase().trim());
+        if (match && match.customerName) return match.customerName;
+        return null;
+    }, [id, sales]);
+
+    const handleApplyCustomerData = () => {
+        if (foundCustomer) {
+            setName(foundCustomer.toUpperCase());
+            toast({ title: "Datos cargados", description: `Se aplicó el nombre guardado para el ID ${id}` });
+        }
+    };
+
+    const handleSave = () => {
+        onSave(name.toUpperCase().trim(), id.toUpperCase().trim());
+        setOpen(false);
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className={cn("h-8 text-[10px] font-black uppercase flex items-center gap-1.5", (currentName || currentID) ? "text-primary bg-primary/10" : "text-muted-foreground")}>
+                    {(currentName || currentID) ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+                    {(currentName || currentID) ? "Cliente Asignado" : "Asignar Cliente"}
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="uppercase font-bold">Datos del Cliente</DialogTitle>
+                    <DialogDescription>Estos datos aparecerán en la factura y el reporte de ventas.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase">Cédula / RIF</Label>
+                        <Input 
+                            value={id} 
+                            onChange={(e) => setId(e.target.value.toUpperCase())} 
+                            placeholder="EJ: V-12345678" 
+                            className="uppercase font-mono" 
+                        />
+                    </div>
+
+                    {foundCustomer && (name.toUpperCase() !== foundCustomer.toUpperCase()) && (
+                        <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 text-[10px] text-blue-600 bg-blue-50 hover:bg-blue-100 flex items-center gap-1.5 font-bold w-full border border-blue-200"
+                            onClick={handleApplyCustomerData}
+                        >
+                            <Search className="w-3.5 h-3.5" />
+                            CARGAR NOMBRE: {foundCustomer.toUpperCase()}
+                        </Button>
+                    )}
+
+                    <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase">Nombre y Apellido</Label>
+                        <Input 
+                            value={name} 
+                            onChange={(e) => setName(e.target.value.toUpperCase())} 
+                            placeholder="EJ: JUAN PEREZ" 
+                            className="uppercase" 
+                        />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button onClick={handleSave} className="w-full h-11 uppercase font-bold" disabled={!id.trim() && !name.trim()}>
+                        Guardar Datos
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift, onToggleWarranty, onHoldSale }: CartDisplayProps) {
   const { firestore, user } = useFirebase();
   const { toast } = useToast();
   const { format: formatCurrency, getFinalPrice, getSymbol, convert, bcvRate, parallelRate } = useCurrency();
   const [discount] = useState(0);
   
+  // Estados para el cliente
+  const [customerName, setCustomerName] = useState("");
+  const [customerID, setCustomerID] = useState("");
+
   const repairJobRef = useMemoFirebase(() => 
     (repairJobId && firestore && user) ? doc(firestore, 'users', user.uid, 'repair_jobs', repairJobId) : null,
     [repairJobId, firestore, user?.uid]
   );
   const { data: activeRepairJob } = useDoc<RepairJob>(repairJobRef);
+
+  // Cargamos las ventas recientes para el autocompletado de clientes
+  const salesCol = useMemoFirebase(() => 
+    (firestore && user) ? query(collection(firestore, "users", user.uid, "sale_transactions"), orderBy("transactionDate", "desc")) : null, 
+    [firestore, user?.uid]
+  );
+  const { data: sales } = useCollection<Sale>(salesCol);
 
   const getPrice = (item: CartItem) => {
     if (item.isGift || item.isWarranty) return 0;
@@ -112,7 +216,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
       const hasRepairInCart = cartWithPrices.some(i => i.isRepair);
 
       const totalPaidInUSD = payments.reduce((acc, p) => {
-          return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD', hasPromo));
+          return acc + (p.method === 'Efectivo USD' || p.method === 'USDT / Crypto' ? p.amount : convert(p.amount, 'Bs', 'USD', hasPromo));
       }, 0);
       const actualNetPaidInUSD = totalPaidInUSD - totalChangeInUSD;
 
@@ -208,10 +312,11 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
             const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', saleId);
             
-            // LIMPIAR DATOS ANTES DE ESCRIBIR EN FIRESTORE
             const saleData = cleanObject({
                 id: saleId,
                 items: cartWithPrices,
+                customerName: customerName || null,
+                customerID: customerID || null,
                 subtotal, discount, totalAmount: total,
                 paymentMethod: payments.map(p => p.method).join(', '),
                 transactionDate: new Date().toISOString(),
@@ -227,9 +332,12 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
         });
 
         toast({ title: totalPaidInUSD < total - 0.01 ? "Abono Registrado Correctamente" : "Venta Completada con Éxito" });
-        return { 
+        
+        const resultSale = { 
             id: saleId, 
             items: cartWithPrices, 
+            customerName: customerName || undefined,
+            customerID: customerID || undefined,
             subtotal, 
             discount, 
             totalAmount: total, 
@@ -242,6 +350,10 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
             bcvRateAtTime: bcvRate,
             parallelRateAtTime: parallelRate
         } as Sale;
+
+        setCustomerName("");
+        setCustomerID("");
+        return resultSale;
       } catch (e: any) {
         console.error("Transacción mixta fallida:", e);
         toast({ 
@@ -253,12 +365,38 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
       }
   };
 
+  const handleClearCart = () => {
+    onClearCart();
+    setCustomerName("");
+    setCustomerID("");
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
-        <div className="p-4 border-b bg-white">
+        <div className="p-4 border-b bg-white flex justify-between items-center">
             <h2 className="text-lg font-semibold">Carrito de Ventas</h2>
+            <CustomerDialog 
+                onSave={(name, id) => { setCustomerName(name); setCustomerID(id); }} 
+                currentName={customerName} 
+                currentID={customerID} 
+                sales={sales || []}
+            />
         </div>
       <ScrollArea className="flex-1 bg-white">
+        {(customerName || customerID) && (
+            <div className="bg-primary/5 px-4 py-2 border-b flex justify-between items-center group">
+                <div className="flex items-center gap-2">
+                    <UserCheck className="w-3 h-3 text-primary" />
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-primary uppercase leading-tight">{customerName || 'SIN NOMBRE'}</span>
+                        <span className="text-[8px] font-bold text-muted-foreground uppercase">{customerID || 'SIN CÉDULA'}</span>
+                    </div>
+                </div>
+                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setCustomerName(""); setCustomerID(""); }}>
+                    <UserX className="w-3 h-3 text-destructive" />
+                </Button>
+            </div>
+        )}
         <Table>
             <TableHeader>
                 <TableRow>
@@ -411,7 +549,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 </span>
             </div>
         </div>
-        <CheckoutDialog cart={cart} allProducts={allProducts} total={total} onCheckout={handleCheckout} onClearCart={onClearCart} isRepairSale={!!repairJobId && cart.some(i => i.isRepair)} repairData={activeRepairJob}>
+        <CheckoutDialog cart={cart} allProducts={allProducts} total={total} onCheckout={handleCheckout} onClearCart={handleClearCart} isRepairSale={!!repairJobId && cart.some(i => i.isRepair)} repairData={activeRepairJob}>
             <Button size="lg" className="w-full h-12 text-lg font-black shadow-lg" disabled={cart.length === 0}>
                 PAGAR COMPRA
             </Button>
@@ -425,7 +563,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     </Button>
                 </HoldSaleDialog>
             )}
-            <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground h-8" onClick={onClearCart} disabled={cart.length === 0}>
+            <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground h-8" onClick={handleClearCart} disabled={cart.length === 0}>
                 Vaciar Carrito
             </Button>
         </div>
