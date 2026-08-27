@@ -1,4 +1,3 @@
-
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
@@ -210,7 +209,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                 const productIds = Array.from(new Set([
                     ...reservedParts.map(p => p.productId),
                     ...consumedParts.map(p => p.productId)
-                ]));
+                ])).filter(id => !id.startsWith('manual-'));
 
                 const productSnapshots = new Map<string, DocumentSnapshot>();
                 for (const pid of productIds) {
@@ -376,13 +375,24 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
                 const reservedParts = jobData.reservedParts || [];
                 const currentConsumed = jobData.consumedParts || [];
 
+                // READ ALL PRODUCTS FIRST (Firebase Transaction Rule)
+                const productSnapshots = new Map<string, DocumentSnapshot>();
+                if (newStatus === 'Completado') {
+                    for (const part of reservedParts) {
+                        if (part.isManual) continue;
+                        const pRef = doc(firestore, 'users', user.uid, 'products', part.productId);
+                        productSnapshots.set(part.productId, await transaction.get(pRef));
+                    }
+                }
+
+                // NOW PERFORM ALL WRITES
                 let updateData: Partial<RepairJob> = { status: newStatus };
 
                 if (newStatus === 'Completado') {
                     for (const part of reservedParts) {
                         if (part.isManual) continue;
-                        const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', part.productId));
-                        if (pSnap.exists()) {
+                        const pSnap = productSnapshots.get(part.productId);
+                        if (pSnap?.exists()) {
                             const pData = pSnap.data() as Product;
                             transaction.update(pSnap.ref, {
                                 stockLevel: (pData.stockLevel || 0) - part.quantity,

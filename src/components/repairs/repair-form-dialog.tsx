@@ -268,17 +268,34 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
             const jobId = repairJob?.id || `R-${format(new Date(), "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
             const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', jobId);
 
-            // Filtrar repuestos del formulario
+            // 1. GATHER ALL NEEDED DATA (READS FIRST)
             const allFormParts = values.reservedParts;
             const newReservedItems = allFormParts.filter(p => !p.isConsumed);
             const newConsumedItems = allFormParts.filter(p => p.isConsumed);
 
-            // Cálculo de deltas de inventario (solo para piezas que NO son manuales)
             const oldInventoryReserved = (repairJob?.reservedParts || []).filter(p => !p.isManual);
             const oldInventoryConsumed = (repairJob?.consumedParts || []).filter(p => !p.isManual);
             const newInventoryReserved = newReservedItems.filter(p => !p.isManual);
             const newInventoryConsumed = newConsumedItems.filter(p => !p.isManual);
 
+            // Collect all unique product IDs for inventory management
+            const productIdsToRead = new Set<string>();
+            oldInventoryReserved.forEach(p => productIdsToRead.add(p.productId));
+            oldInventoryConsumed.forEach(p => productIdsToRead.add(p.productId));
+            newInventoryReserved.forEach(p => productIdsToRead.add(p.productId));
+            newInventoryConsumed.forEach(p => productIdsToRead.add(p.productId));
+
+            // READ all required products at once
+            const productSnapshots = new Map<string, DocumentSnapshot>();
+            for (const pid of Array.from(productIdsToRead)) {
+                const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
+                productSnapshots.set(pid, pSnap);
+            }
+
+            // Also read the job itself if we are editing
+            if (repairJob) await transaction.get(jobRef);
+
+            // 2. CALCULATE AND APPLY WRITES
             const reservedDeltas = new Map<string, { delta: number, name: string }>();
             for (const old of oldInventoryReserved) {
                 const current = reservedDeltas.get(old.productId) || { delta: 0, name: old.productName };
@@ -298,11 +315,11 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 }
             }
 
-            // Aplicar cambios en inventario (Firestore)
+            // Apply calculated deltas
             for (const [pid, change] of Array.from(reservedDeltas.entries())) {
                 if (change.delta === 0) continue;
-                const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
-                if (pSnap.exists()) {
+                const pSnap = productSnapshots.get(pid);
+                if (pSnap?.exists()) {
                     const data = pSnap.data() as Product;
                     if (change.delta > 0 && ((data.stockLevel - data.reservedStock - (data.damagedStock || 0)) < change.delta)) {
                         throw new Error(`Stock insuficiente para "${change.name}".`);
@@ -312,8 +329,8 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
             }
 
             for (const [pid, info] of Array.from(stockReturns.entries())) {
-                const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
-                if (pSnap.exists()) {
+                const pSnap = productSnapshots.get(pid);
+                if (pSnap?.exists()) {
                     const data = pSnap.data() as Product;
                     transaction.update(pSnap.ref, { stockLevel: (data.stockLevel || 0) + info.qty });
                 }
@@ -324,11 +341,10 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
             let partsConsumed = !!repairJob?.partsConsumed;
             let completionData: any = {};
 
-            // Si se marca como completado, mover todo lo reservado a consumido (y descontar stock físico)
             if (values.status === 'Completado') {
                 for (const part of newInventoryReserved) {
-                    const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', part.productId));
-                    if (pSnap.exists()) {
+                    const pSnap = productSnapshots.get(part.productId);
+                    if (pSnap?.exists()) {
                         const pData = pSnap.data() as Product;
                         transaction.update(pSnap.ref, { 
                             stockLevel: (pData.stockLevel || 0) - part.quantity,
@@ -343,7 +359,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 partsConsumed = true;
             }
 
-            // Stripping UI flags before saving
             const finalReserved = finalReservedParts.map(({isConsumed, ...p}) => p);
             const finalConsumed = finalConsumedParts.map(({isConsumed, ...p}) => p);
 
@@ -679,7 +694,7 @@ function ManualQuickAddDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean
                         <Switch id="promo-mode" checked={isPromo} onCheckedChange={setIsPromo} />
                     </div>
                 </div>
-                <DialogFooter><Button onClick={handleConfirm} disabled={!name || !cost} className="w-full h-11 uppercase font-bold text-sm shadow-md">Confirmar Añadido</Button></DialogFooter>
+                <DialogFooter><Button handleConfirm={() => handleConfirm()} disabled={!name || !cost} className="w-full h-11 uppercase font-bold text-sm shadow-md">Confirmar Añadido</Button></DialogFooter>
             </DialogContent>
         </Dialog>
     );
