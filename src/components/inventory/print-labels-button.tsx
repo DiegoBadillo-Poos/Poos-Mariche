@@ -29,6 +29,7 @@ export const handlePrint = (
   const fullHtml = `
         <html>
             <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Etiquetas de Productos - Poos Mariche</title>
                 <style>
                     @media print {
@@ -39,6 +40,7 @@ export const handlePrint = (
                         body {
                             -webkit-print-color-adjust: exact !important;
                             print-color-adjust: exact !important;
+                            visibility: visible !important;
                         }
                     }
                     body {
@@ -126,10 +128,13 @@ export const handlePrint = (
     `;
 
   const iframe = document.createElement('iframe');
-  iframe.style.position = 'absolute';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0px';
+  iframe.style.height = '0px';
   iframe.style.border = 'none';
+  iframe.style.opacity = '0';
   document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow?.document;
@@ -143,7 +148,7 @@ export const handlePrint = (
         iframe.contentWindow?.print();
         setTimeout(() => {
             document.body.removeChild(iframe);
-        }, 1000);
+        }, 1500);
     }, 500);
   } else {
     onError("No se pudo inicializar el canal de impresión.");

@@ -167,6 +167,7 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
         const fullHtml = `
             <html>
                 <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
                     <title>Recibo de Venta</title>
                     <style>
                         @media print {
@@ -222,10 +223,14 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
         `;
 
         const iframe = document.createElement('iframe');
-        iframe.style.visibility = 'hidden';
+        // Para compatibilidad móvil, evitamos hidden y usamos posición fuera de pantalla
         iframe.style.position = 'fixed';
         iframe.style.right = '0';
         iframe.style.bottom = '0';
+        iframe.style.width = '0px';
+        iframe.style.height = '0px';
+        iframe.style.border = 'none';
+        iframe.style.opacity = '0';
         document.body.appendChild(iframe);
 
         const doc = iframe.contentWindow?.document;
@@ -234,12 +239,13 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
             doc.write(fullHtml);
             doc.close();
 
+            // Pequeño retardo para asegurar el foco en el iframe antes de disparar el diálogo del sistema
             setTimeout(() => {
                 iframe.contentWindow?.focus();
                 iframe.contentWindow?.print();
                 setTimeout(() => {
                     document.body.removeChild(iframe);
-                }, 1000);
+                }, 1500);
             }, 500);
         } else {
             onError("No se pudo inicializar el canal de impresión.");

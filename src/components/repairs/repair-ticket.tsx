@@ -182,7 +182,7 @@ export function StickerTicket({ repairJob }: RepairTicketProps) {
 const getPrintStyles = (leftMargin: number = 0) => `
     @media print {
         @page { margin: 0; size: auto; }
-        body { margin: 0; padding: 0; }
+        body { margin: 0; padding: 0; visibility: visible !important; }
     }
     * { 
         -webkit-print-color-adjust: exact !important; 
@@ -235,16 +235,19 @@ const getPrintStyles = (leftMargin: number = 0) => `
 function iframePrint(html: string, leftMargin: number = 0) {
     try {
         const iframe = document.createElement('iframe');
-        iframe.style.visibility = 'hidden';
         iframe.style.position = 'fixed';
-        iframe.style.right = '0';
         iframe.style.bottom = '0';
+        iframe.style.right = '0';
+        iframe.style.width = '0px';
+        iframe.style.height = '0px';
+        iframe.style.border = 'none';
+        iframe.style.opacity = '0';
         document.body.appendChild(iframe);
 
         const doc = iframe.contentWindow?.document;
         if (doc) {
             doc.open();
-            doc.write(`<html><head><style>${getPrintStyles(leftMargin)}</style></head><body><div class="ticket-container">${html}</div></body></html>`);
+            doc.write(`<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>${getPrintStyles(leftMargin)}</style></head><body><div class="ticket-container">${html}</div></body></html>`);
             doc.close();
 
             setTimeout(() => {
@@ -252,7 +255,7 @@ function iframePrint(html: string, leftMargin: number = 0) {
                 iframe.contentWindow?.print();
                 setTimeout(() => {
                     document.body.removeChild(iframe);
-                }, 1000);
+                }, 1500);
             }, 500);
         }
     } catch (e) {
