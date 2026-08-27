@@ -13,6 +13,8 @@ import {
   HandCoins,
   HandHelping,
   Lock,
+  Download,
+  Loader2
 } from 'lucide-react';
 import {
   Sidebar,
@@ -30,7 +32,7 @@ import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import type { UserProfile, UserModule } from '@/lib/types';
 import { Button } from './ui/button';
-import { PwaInstallButton } from './pwa-install-button';
+import { useState, useEffect } from 'react';
 
 type NavItem = {
     href: string;
@@ -39,7 +41,6 @@ type NavItem = {
     module?: UserModule;
 };
 
-// Nuevo orden solicitado por el usuario
 const navItems: NavItem[] = [
   { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
   { href: '/dashboard/inventory', icon: Package, label: 'Inventario', module: 'inventory' },
@@ -53,6 +54,23 @@ const navItems: NavItem[] = [
 export function SidebarNav() {
   const pathname = usePathname();
   const { firestore, user } = useFirebase();
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: any) => {
+        event.preventDefault();
+        setInstallPrompt(event);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+  };
 
   const profileRef = useMemoFirebase(() => 
     (firestore && user) ? doc(firestore, 'users', user.uid) : null,
@@ -124,8 +142,24 @@ export function SidebarNav() {
           )}
         </SidebarMenu>
       </SidebarContent>
-      <SidebarFooter className='mt-auto p-4 space-y-2'>
-        <PwaInstallButton />
+      <SidebarFooter className='mt-auto p-4 space-y-3'>
+        
+        {installPrompt ? (
+            <Button 
+                onClick={handleInstall}
+                variant="default" 
+                className="w-full justify-start h-10 text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white shadow-lg animate-in fade-in slide-in-from-bottom-2"
+            >
+                <Download className="mr-2 h-3.5 w-3.5" />
+                INSTALAR EN ESCRITORIO
+            </Button>
+        ) : (
+            <div className="w-full p-2 rounded-md border border-slate-200 bg-slate-50 flex items-center gap-2 opacity-60">
+                <Loader2 className="h-3 w-3 animate-spin text-slate-400" />
+                <span className="text-[9px] font-black text-slate-500 uppercase">Buscando Navegador...</span>
+            </div>
+        )}
+
         {isManagerMode && (
             <Button 
                 variant="outline" 

@@ -1,17 +1,28 @@
 {
-  "name": "POS Mariche",
+  "name": "POS Mariche - Gestión de Negocio",
   "short_name": "POS Mariche",
-  "description": "Gestión de Inventario y Reparaciones para Servicio Técnico",
-  "start_url": "/dashboard/pos",
+  "description": "Sistema de gestión de inventario, ventas y taller técnico.",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#2532c2",
   "theme_color": "#2532c2",
-  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "192x192",
+      "type": "image/x-icon",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "512x512",
+      "type": "image/x-icon",
+      "purpose": "any maskable"
     }
   ]
 }

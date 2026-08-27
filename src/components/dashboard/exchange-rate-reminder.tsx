@@ -31,9 +31,9 @@ export function ExchangeRateReminder() {
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
 
-        // Lógica de Instalación PWA (Capturar el evento del navegador)
         const handleBeforeInstallPrompt = (event: any) => {
             event.preventDefault();
+            console.log("PWA: Evento 'beforeinstallprompt' capturado.");
             setInstallPrompt(event);
         };
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -146,7 +146,7 @@ export function ExchangeRateReminder() {
                         <span className="text-[10px] font-black uppercase tracking-wider">{isOnline ? "En Línea" : "Sin Internet"}</span>
                     </div>
 
-                    {installPrompt && (
+                    {installPrompt ? (
                         <Button 
                             variant="default" 
                             size="sm" 
@@ -155,6 +155,16 @@ export function ExchangeRateReminder() {
                         >
                             <Download className="mr-1.5 h-3.5 w-3.5" />
                             INSTALAR EN ESCRITORIO
+                        </Button>
+                    ) : (
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            disabled
+                            className="h-8 px-4 text-[9px] font-black uppercase border-blue-200 text-blue-400 bg-blue-50/50 shrink-0"
+                        >
+                            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                            Preparando Instalación...
                         </Button>
                     )}
 
