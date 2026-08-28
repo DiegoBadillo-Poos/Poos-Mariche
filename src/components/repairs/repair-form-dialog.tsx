@@ -694,7 +694,7 @@ function ManualQuickAddDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean
                         <Switch id="promo-mode" checked={isPromo} onCheckedChange={setIsPromo} />
                     </div>
                 </div>
-                <DialogFooter><Button handleConfirm={() => handleConfirm()} disabled={!name || !cost} className="w-full h-11 uppercase font-bold text-sm shadow-md">Confirmar Añadido</Button></DialogFooter>
+                <DialogFooter><Button onClick={handleConfirm} disabled={!name || !cost} className="w-full h-11 uppercase font-bold text-sm shadow-md">Confirmar Añadido</Button></DialogFooter>
             </DialogContent>
         </Dialog>
     );
