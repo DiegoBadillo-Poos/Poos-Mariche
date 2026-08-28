@@ -32,7 +32,7 @@ import { Label } from "../ui/label";
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from "@/firebase";
 import { doc, runTransaction, query, orderBy, collection, type DocumentSnapshot } from "firebase/firestore";
 import { handlePrintAllTickets } from "./repair-ticket";
-import { User, Smartphone, Package, Search, Plus, Trash2, Loader2, DollarSign, Calculator, UserCheck, MapPin, Hammer, Minus, TicketPercent, CheckCircle2, Lock } from "lucide-react";
+import { User, Smartphone, Package, Search, Plus, Trash2, Loader2, DollarSign, Calculator, UserCheck, MapPin, Hammer, Minus, TicketPercent, CheckCircle2 } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
@@ -392,7 +392,11 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
-      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent 
+        className="sm:max-w-[650px] max-h-[90vh] overflow-hidden flex flex-col p-0"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <div className="p-4 sm:p-6 pb-2 shrink-0">
             <div className="flex justify-between items-center mb-2 sm:mb-4">
                 <DialogHeader className="flex-1">

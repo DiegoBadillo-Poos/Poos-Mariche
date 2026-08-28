@@ -39,7 +39,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const comboItemSchema = z.object({
   productId: z.string(),
@@ -331,7 +331,11 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
-      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent 
+        className="sm:max-w-[550px] max-h-[90vh] overflow-hidden flex flex-col p-0"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <div className="p-4 sm:p-6 pb-2">
             <DialogHeader>
                 <DialogTitle className="uppercase font-bold text-base sm:text-lg">{isEditing ? 'Gestionar Producto' : 'Añadir Nuevo Producto'}</DialogTitle>
@@ -504,8 +508,16 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
 
                     <div className="p-3 sm:p-4 rounded-xl bg-slate-900 text-white space-y-3 shadow-lg">
                         <div className="grid grid-cols-2 gap-4">
-                            <div><p className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase">P. Venta Sugerido</p><p className="text-lg sm:text-xl font-black text-blue-400">${formatCurrency(suggestedRetailPrice)}</p></div>
-                            <div className="text-right"><p className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase">P. Oferta Sugerido</p><p className="text-lg sm:text-xl font-black text-green-400">${formatCurrency(suggestedPromoPrice)}</p></div>
+                            <div>
+                                <p className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase">P. Venta Sugerido</p>
+                                <p className="text-lg sm:text-xl font-black text-blue-400">${formatCurrency(suggestedRetailPrice)}</p>
+                                <p className="text-[10px] font-bold text-blue-300/60 uppercase">Bs {formatCurrency(convert(suggestedRetailPrice, 'USD', 'Bs', false))}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase">P. Oferta Sugerido</p>
+                                <p className="text-lg sm:text-xl font-black text-green-400">${formatCurrency(suggestedPromoPrice)}</p>
+                                <p className="text-[10px] font-bold text-green-300/60 uppercase">Bs {formatCurrency(convert(suggestedPromoPrice, 'USD', 'Bs', true))}</p>
+                            </div>
                         </div>
                     </div>
                 </div>

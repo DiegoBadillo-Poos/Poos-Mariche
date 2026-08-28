@@ -204,10 +204,14 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
         }
     }}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className={cn(
-          "transition-all duration-300 overflow-hidden",
-          completedSale ? "sm:max-w-lg" : (isGivingChange ? "sm:max-w-4xl" : "sm:max-w-lg")
-      )}>
+      <DialogContent 
+        className={cn(
+            "transition-all duration-300 overflow-hidden",
+            completedSale ? "sm:max-w-lg" : (isGivingChange ? "sm:max-w-4xl" : "sm:max-w-lg")
+        )}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         {completedSale ? (
             <div className="flex flex-col h-full">
                <div className="p-4">
