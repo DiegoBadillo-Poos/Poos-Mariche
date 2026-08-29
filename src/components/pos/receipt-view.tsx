@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import type { Sale, Payment, UserProfile, RepairJob } from "@/lib/types";
 import { format, parseISO } from "date-fns";
@@ -22,7 +22,7 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
     const { format: formatCurrency, getSymbol } = currency;
 
     const getPaymentAmountInCorrectCurrency = (payment: Payment) => {
-        const isUSD = payment.method === 'Efectivo USD';
+        const isUSD = payment.method === 'Efectivo USD' || payment.method === 'USDT / Crypto';
         const symbol = isUSD ? getSymbol('USD') : getSymbol('Bs');
         return `${symbol}${formatCurrency(payment.amount, isUSD ? 'USD' : 'Bs')}`;
     };
@@ -33,6 +33,10 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
     
     const bcvRate = sale.bcvRateAtTime || 1;
     const totalBs = sale.totalAmount * bcvRate;
+
+    // Calcular ahorro total para el resumen
+    const totalDiscount = sale.items.reduce((sum, item) => sum + ((item.discount || 0) * item.quantity), 0);
+    const grossSubtotal = sale.totalAmount + totalDiscount;
 
     return (
          <div className="receipt-content">
@@ -45,7 +49,7 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
                     <p className="meta-info text-[7pt] italic leading-tight">{profile.businessAddress}</p>
                 )}
                 
-                <p className="ticket-title mt-2 bold-header" style={{ fontSize: '10pt' }}>FACTURA DE VENTA</p>
+                <p className="ticket-title mt-2 bold-header" style={{ fontSize: '10pt' }}>NOTA DE VENTA</p>
                 <p className="meta-info">{sale.id}</p>
                 <p className="meta-info mt-1">Fecha: {format(parseISO(sale.transactionDate), "dd/MM/yyyy HH:mm:ss", { locale: es })}</p>
             </div>
@@ -70,33 +74,46 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
             <div className="section-divider mt-2 mb-1"></div>
             
             <div className="items-list">
-                {sale.items.map((item, idx) => (
-                    <div key={idx} className="item-row flex-row-between text-[8pt] mb-1">
-                        <span className="item-name flex-1 text-left">
-                            {item.name} ({item.quantity})
-                            {item.isWarranty && <span className="bold-header"> [GARANTÍA]</span>}
-                            {item.isGift && <span className="bold-header"> [OBSEQUIO]</span>}
-                        </span>
-                        <span className="item-total w-1/3 text-right">
-                            {formatCurrency(item.price * item.quantity, 'USD')}
-                        </span>
-                    </div>
-                ))}
+                {sale.items.map((item, idx) => {
+                    const hasDiscount = (item.discount || 0) > 0;
+                    const itemOriginalPrice = item.price + (item.discount || 0);
+
+                    return (
+                        <div key={idx} className="item-block border-b border-dotted pb-1 mb-1">
+                            <div className="item-row flex-row-between text-[8pt]">
+                                <span className="item-name flex-1 text-left">
+                                    {item.name} ({item.quantity})
+                                    {item.isWarranty && <span className="bold-header"> [GARANTÍA]</span>}
+                                    {item.isGift && <span className="bold-header"> [OBSEQUIO]</span>}
+                                </span>
+                                <span className="item-total w-1/3 text-right">
+                                    {formatCurrency(itemOriginalPrice * item.quantity, 'USD')}
+                                </span>
+                            </div>
+                            {hasDiscount && (
+                                <div className="flex-row-between text-[7pt] italic">
+                                    <span className="pl-2">Descuento aplicado:</span>
+                                    <span>-{formatCurrency(item.discount * item.quantity, 'USD')}</span>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
 
             <div className="totals-section mt-2 pt-1 border-t" style={{ borderTopStyle: 'dashed', borderTopWidth: '1px' }}>
-                 <div className="flex-row-between">
-                    <span>Total antes de impuestos:</span>
-                    <span>{formatCurrency(sale.subtotal, 'USD')}</span>
+                 <div className="flex-row-between text-[8pt]">
+                    <span>Monto Bruto:</span>
+                    <span>{formatCurrency(grossSubtotal, 'USD')}</span>
                 </div>
-                 {sale.discount > 0 && (
-                    <div className="flex-row-between">
-                        <span>Descuento:</span>
-                        <span>-{formatCurrency(sale.discount, 'USD')}</span>
+                {totalDiscount > 0 && (
+                    <div className="flex-row-between text-[8pt] italic">
+                        <span>Descuento Total:</span>
+                        <span>-{formatCurrency(totalDiscount, 'USD')}</span>
                     </div>
                 )}
                  <div className="flex-row-between total-row bold-header mt-1" style={{ fontSize: '10pt' }}>
-                    <span>TOTAL FINAL:</span>
+                    <span>TOTAL A PAGAR:</span>
                     <span>USD {formatCurrency(sale.totalAmount, 'USD')}</span>
                 </div>
                 <div className="flex-row-between font-black text-[8pt] mt-0.5">
@@ -137,7 +154,7 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
                  <div className="change-section mt-2 border-t pt-1" style={{ borderTopStyle: 'dotted' }}>
                     <p className="section-subtitle text-center">VUELTO ENTREGADO</p>
                     {sale.changeGiven.map((change, index) => {
-                        const isUSD = change.method === 'Efectivo USD';
+                        const isUSD = change.method === 'Efectivo USD' || change.method === 'USDT / Crypto';
                         const symbol = isUSD ? getSymbol('USD') : getSymbol('Bs');
                         return (
                             <div key={index} className="flex-row-between text-[7pt]">
@@ -150,7 +167,7 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
             )}
 
              <div className="footer-section mt-4 border-t pt-2 text-center">
-                <p className="bold-header text-[8pt]">¡GRACIAS POR SU COMPRA!</p>
+                <p className="bold-header text-[8pt]">¡GRACIAS POR SU CONFIANZA!</p>
                 {showRate && (
                     <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {bcvRate.toFixed(2)} Bs/$</p>
                 )}
@@ -168,7 +185,7 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
             <html>
                 <head>
                     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Recibo de Venta</title>
+                    <title>Nota de Venta</title>
                     <style>
                         @media print {
                             @page { margin: 0; size: auto; }
@@ -214,6 +231,7 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                         .mb-1 { margin-bottom: 2px; }
                         .mb-2 { margin-bottom: 4px; }
                         .font-black { font-weight: 900; }
+                        .item-block { width: 100%; }
                     </style>
                 </head>
                 <body>
@@ -223,7 +241,6 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
         `;
 
         const iframe = document.createElement('iframe');
-        // Para compatibilidad móvil, evitamos hidden y usamos posición fuera de pantalla
         iframe.style.position = 'fixed';
         iframe.style.right = '0';
         iframe.style.bottom = '0';
@@ -239,7 +256,6 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
             doc.write(fullHtml);
             doc.close();
 
-            // Pequeño retardo para asegurar el foco en el iframe antes de disparar el diálogo del sistema
             setTimeout(() => {
                 iframe.contentWindow?.focus();
                 iframe.contentWindow?.print();

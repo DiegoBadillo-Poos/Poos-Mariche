@@ -1,4 +1,3 @@
-
 "use client";
 
 import { ProductGrid } from "@/components/pos/product-grid";
@@ -147,6 +146,10 @@ function POSContent() {
         setCart(prev => prev.map(i => i.productId === id ? { ...i, quantity: Math.max(0.001, finalQty) } : i));
     };
 
+    const handleUpdateDiscount = (id: string, discount: number) => {
+        setCart(prev => prev.map(i => i.productId === id ? { ...i, discount } : i));
+    };
+
     const handleAddCustomItem = (name: string, price: number, costPrice: number) => {
         setCart(prev => [...prev, { productId: `custom-${Date.now()}`, name, quantity: 1, isCustom: true, customPrice: price, customCostPrice: costPrice }]);
     };
@@ -187,11 +190,11 @@ function POSContent() {
                         cart={cart}
                         allProducts={products || []}
                         onUpdateQuantity={handleUpdateQuantity}
+                        onUpdateDiscount={handleUpdateDiscount}
                         onRemoveItem={handleRemoveItem}
                         onClearCart={() => setCart([])}
                         onTogglePromo={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isPromo: !i.isPromo } : i))}
-                        onToggleGift={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isGift: !i.isGift, isWarranty: false } : i))}
-                        onToggleWarranty={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isWarranty: !i.isWarranty, isGift: false } : i))}
+                        onToggleGift={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isGift: !i.isGift } : i))}
                         onHoldSale={handleHoldSale}
                         repairJobId={activeRepairJob?.id}
                     />

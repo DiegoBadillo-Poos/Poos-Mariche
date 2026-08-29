@@ -43,11 +43,9 @@ const ALL_MODULES: { id: UserModule, label: string }[] = [
     { id: 'inventory', label: 'Inventario' },
     { id: 'pos', label: 'Punto de Venta' },
     { id: 'repairs', label: 'Reparaciones' },
-    { id: 'reports', label: 'Reportes Financieros' },
+    { id: 'expenses', label: 'Gastos / Egresos' },
+    { id: 'reports', label: 'Reportes' },
     { id: 'analysis', label: 'Análisis de Negocio' },
-    { id: 'fiados', label: 'Fiados / Créditos' },
-    { id: 'loans', label: 'Préstamos' },
-    { id: 'inventory_aging', label: 'Antigüedad de Stock' },
 ];
 
 export default function AdminPage() {

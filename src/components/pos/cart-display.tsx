@@ -2,14 +2,14 @@
 
 import type { CartItem, Payment, Product, Sale, RepairJob, ReservedPart } from "@/lib/types";
 import { Button } from "../ui/button";
-import { Trash2, TicketPercent, Gift, ParkingSquare, ShieldAlert, UserPlus, UserX, UserCheck, Search, Loader2 } from "lucide-react";
+import { Trash2, TicketPercent, Gift, ParkingSquare, UserPlus, UserX, UserCheck, Search, BadgePercent, Tag } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { CheckoutDialog } from "./checkout-dialog";
 import { useCurrency } from "@/hooks/use-currency";
 import { ScrollArea } from "../ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useFirebase, useDoc, useMemoFirebase, useCollection } from "@/firebase";
-import { doc, runTransaction, type DocumentSnapshot, collection, query, orderBy, limit } from "firebase/firestore";
+import { doc, runTransaction, type DocumentSnapshot, collection, query, orderBy } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
@@ -19,16 +19,17 @@ import { HoldSaleDialog } from "./hold-sale-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 type CartDisplayProps = {
   cart: CartItem[];
   allProducts: Product[];
   onUpdateQuantity: (productId: string, quantity: number) => void;
+  onUpdateDiscount: (productId: string, discount: number) => void;
   onRemoveItem: (productId: string, isRepair?: boolean) => void;
   onClearCart: () => void;
   onTogglePromo: (productId: string) => void;
   onToggleGift: (productId: string) => void;
-  onToggleWarranty: (productId: string) => void;
   onHoldSale?: (name: string) => void;
   repairJobId?: string;
 };
@@ -61,7 +62,6 @@ function CustomerDialog({ onSave, currentName, currentID, sales }: { onSave: (na
     const [id, setId] = useState(currentID);
     const { toast } = useToast();
 
-    // Sincronizar estados cuando cambia el diálogo o los props
     useEffect(() => {
         if (open) {
             setName(currentName);
@@ -71,7 +71,6 @@ function CustomerDialog({ onSave, currentName, currentID, sales }: { onSave: (na
 
     const foundCustomer = useMemo(() => {
         if (!id || id.length < 5 || !sales) return null;
-        // Buscamos la venta más reciente con ese ID de cliente
         const match = sales.find(s => s.customerID?.toUpperCase().trim() === id.toUpperCase().trim());
         if (match && match.customerName) return match.customerName;
         return null;
@@ -146,13 +145,64 @@ function CustomerDialog({ onSave, currentName, currentID, sales }: { onSave: (na
     );
 }
 
-export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift, onToggleWarranty, onHoldSale }: CartDisplayProps) {
+/**
+ * Componente interno para gestionar el Popover de descuento con botón Aplicar
+ */
+function DiscountItemControl({ productId, currentDiscount, onApply }: { productId: string, currentDiscount: number, onApply: (id: string, d: number) => void }) {
+    const [tempVal, setTempVal] = useState(currentDiscount > 0 ? currentDiscount.toString() : "");
+    const [isOpen, setIsOpen] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            setTempVal(currentDiscount > 0 ? currentDiscount.toString() : "");
+        }
+    }, [isOpen, currentDiscount]);
+
+    const handleConfirm = () => {
+        const d = Math.max(0, parseFloat(tempVal) || 0);
+        onApply(productId, d);
+        setIsOpen(false);
+    };
+
+    return (
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+            <PopoverTrigger asChild>
+                <Button 
+                    type="button"
+                    variant="ghost" 
+                    size="icon" 
+                    className={cn("h-7 w-7", currentDiscount > 0 ? "text-amber-600 bg-amber-100" : "text-muted-foreground")}
+                >
+                    <BadgePercent className="h-3.5 w-3.5" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-48 p-3" align="end">
+                <div className="space-y-3">
+                    <Label className="text-[10px] font-black uppercase text-muted-foreground">Descuento ($/un)</Label>
+                    <Input 
+                        type="number" 
+                        step="0.01" 
+                        value={tempVal} 
+                        onChange={(e) => setTempVal(e.target.value)}
+                        className="h-9 text-xs font-bold"
+                        placeholder="0.00"
+                        autoFocus
+                        onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+                    />
+                    <Button onClick={handleConfirm} className="w-full h-8 text-[10px] font-black uppercase">
+                        Aplicar
+                    </Button>
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
+export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDiscount, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift, onHoldSale }: CartDisplayProps) {
   const { firestore, user } = useFirebase();
   const { toast } = useToast();
   const { format: formatCurrency, getFinalPrice, getSymbol, convert, bcvRate, parallelRate } = useCurrency();
-  const [discount] = useState(0);
   
-  // Estados para el cliente
   const [customerName, setCustomerName] = useState("");
   const [customerID, setCustomerID] = useState("");
 
@@ -162,7 +212,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
   );
   const { data: activeRepairJob } = useDoc<RepairJob>(repairJobRef);
 
-  // Cargamos las ventas recientes para el autocompletado de clientes
   const salesCol = useMemoFirebase(() => 
     (firestore && user) ? query(collection(firestore, "users", user.uid, "sale_transactions"), orderBy("transactionDate", "desc")) : null, 
     [firestore, user?.uid]
@@ -172,9 +221,10 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
   const getPrice = (item: CartItem) => {
     if (item.isGift || item.isWarranty) return 0;
     
+    let base = 0;
     if (item.isRepair) {
         if (!activeRepairJob) return 0;
-        const basePending = Math.max(0, activeRepairJob.estimatedCost - (activeRepairJob.amountPaid || 0));
+        base = Math.max(0, activeRepairJob.estimatedCost - (activeRepairJob.amountPaid || 0));
         
         if (item.isPromo && activeRepairJob.reservedParts && activeRepairJob.reservedParts.length > 0) {
             let totalAdditionalDiscount = 0;
@@ -188,23 +238,23 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     }
                 }
             });
-            return Math.max(0, basePending - totalAdditionalDiscount);
+            base = Math.max(0, base - totalAdditionalDiscount);
         }
-        return basePending;
+    } else if (item.isCustom) {
+        base = item.customPrice || 0;
+    } else {
+        const product = allProducts.find(p => p.id === item.productId);
+        if (!product) return 0;
+        
+        base = (item.isPromo && typeof product.promoPrice === 'number' && product.promoPrice > 0) 
+            ? product.promoPrice 
+            : getFinalPrice(product);
     }
-    
-    if (item.isCustom) return item.customPrice || 0;
-    
-    const product = allProducts.find(p => p.id === item.productId);
-    if (!product) return 0;
-    
-    return (item.isPromo && typeof product.promoPrice === 'number' && product.promoPrice > 0) 
-        ? product.promoPrice 
-        : getFinalPrice(product);
+
+    return Math.max(0, base - (item.discount || 0));
   };
   
-  const subtotal = cart.reduce((acc, item) => acc + getPrice(item) * item.quantity, 0);
-  const total = subtotal - discount;
+  const total = cart.reduce((acc, item) => acc + getPrice(item) * item.quantity, 0);
 
   const hasPromo = cart.some(i => i.isPromo);
 
@@ -317,7 +367,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 items: cartWithPrices,
                 customerName: customerName || null,
                 customerID: customerID || null,
-                subtotal, discount, totalAmount: total,
+                subtotal: total, discount: 0, totalAmount: total,
                 paymentMethod: payments.map(p => p.method).join(', '),
                 transactionDate: new Date().toISOString(),
                 payments, status: 'completed',
@@ -338,8 +388,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
             items: cartWithPrices, 
             customerName: customerName || undefined,
             customerID: customerID || undefined,
-            subtotal, 
-            discount, 
+            subtotal: total, 
+            discount: 0, 
             totalAmount: total, 
             payments, 
             transactionDate: new Date().toISOString(), 
@@ -392,9 +442,9 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                         <span className="text-[8px] font-bold text-muted-foreground uppercase">{customerID || 'SIN CÉDULA'}</span>
                     </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setCustomerName(""); setCustomerID(""); }}>
+                <button type="button" className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setCustomerName(""); setCustomerID(""); }}>
                     <UserX className="w-3 h-3 text-destructive" />
-                </Button>
+                </button>
             </div>
         )}
         <Table>
@@ -432,6 +482,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                                     <span className={cn((item.isGift || item.isWarranty) && "line-through text-muted-foreground")}>{item.name}</span>
                                     <div className="flex flex-wrap gap-1">
                                         {item.isPromo && <Badge className="bg-blue-600 text-white text-[9px] h-4 px-1">OFERTA</Badge>}
+                                        {(item.discount || 0) > 0 && <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-200 text-amber-700 font-bold">-${item.discount}</Badge>}
                                         {item.isGift && <Badge className="bg-green-600 text-white text-[9px] h-4 px-1">OBSEQUIO</Badge>}
                                         {item.isWarranty && <Badge className="bg-orange-600 text-white text-[9px] h-4 px-1">GARANTÍA</Badge>}
                                         {item.isRepair && <Badge variant="outline" className="text-[9px] h-4 px-1">REPARACIÓN</Badge>}
@@ -476,6 +527,12 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                                         
                                         {!item.isRepair && (
                                             <>
+                                                <DiscountItemControl 
+                                                    productId={item.productId} 
+                                                    currentDiscount={item.discount || 0} 
+                                                    onApply={onUpdateDiscount} 
+                                                />
+
                                                 <Tooltip>
                                                     <TooltipTrigger asChild>
                                                         <Button 
@@ -489,20 +546,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                                                         </Button>
                                                     </TooltipTrigger>
                                                     <TooltipContent><p>Marcar como Obsequio</p></TooltipContent>
-                                                </Tooltip>
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button 
-                                                            type="button" 
-                                                            variant="ghost" 
-                                                            size="icon" 
-                                                            className={cn("h-7 w-7", item.isWarranty ? "text-orange-600 bg-orange-100" : "text-muted-foreground")}
-                                                            onClick={() => onToggleWarranty(item.productId)}
-                                                        >
-                                                            <ShieldAlert className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent><p>Reemplazo por Garantía ($0)</p></TooltipContent>
                                                 </Tooltip>
                                             </>
                                         )}
@@ -538,7 +581,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
         </Table>
       </ScrollArea>
       <div className="p-4 border-t bg-gray-50 space-y-3">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center px-1">
             <span className="text-sm text-muted-foreground font-medium uppercase tracking-tight">Total a Pagar:</span>
             <div className="text-right flex flex-col items-end">
                 <span className="font-black text-2xl text-primary leading-none">
@@ -549,6 +592,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 </span>
             </div>
         </div>
+
         <CheckoutDialog cart={cart} allProducts={allProducts} total={total} onCheckout={handleCheckout} onClearCart={handleClearCart} isRepairSale={!!repairJobId && cart.some(i => i.isRepair)} repairData={activeRepairJob}>
             <Button size="lg" className="w-full h-12 text-lg font-black shadow-lg" disabled={cart.length === 0}>
                 PAGAR COMPRA

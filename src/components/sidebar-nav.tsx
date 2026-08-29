@@ -8,13 +8,11 @@ import {
   ShoppingCart,
   BarChart2,
   User,
-  TrendingUp,
   ShieldCheck,
-  HandCoins,
-  HandHelping,
   Lock,
   Download,
-  Loader2
+  Receipt,
+  TrendingUp
 } from 'lucide-react';
 import {
   Sidebar,
@@ -41,14 +39,14 @@ type NavItem = {
     module?: UserModule;
 };
 
+// Módulos visibles en la navegación
 const navItems: NavItem[] = [
   { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
   { href: '/dashboard/inventory', icon: Package, label: 'Inventario', module: 'inventory' },
   { href: '/dashboard/repairs', icon: Wrench, label: 'Reparaciones', module: 'repairs' },
+  { href: '/dashboard/expenses', icon: Receipt, label: 'Gastos / Egresos', module: 'expenses' },
   { href: '/dashboard/reports', icon: BarChart2, label: 'Reportes', module: 'reports' },
-  { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis', module: 'analysis' },
-  { href: '/dashboard/fiados', icon: HandCoins, label: 'Fiados / Créditos', module: 'fiados' },
-  { href: '/dashboard/loans', icon: HandHelping, label: 'Préstamos', module: 'loans' },
+  { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis de Negocio', module: 'analysis' },
 ];
 
 export function SidebarNav() {
@@ -84,7 +82,7 @@ export function SidebarNav() {
       if (!item.module) return true;
       if (!profile) return false;
       
-      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'loans'];
+      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis'];
       return enabledModules.includes(item.module);
   });
 

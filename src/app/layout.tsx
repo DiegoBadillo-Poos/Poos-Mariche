@@ -52,15 +52,14 @@ function AppContent({ children }: { children: React.ReactNode }) {
         const profileSnap = await getDoc(profileRef);
         const existingData = profileSnap.exists() ? profileSnap.data() : {};
 
+        // Lista de módulos del núcleo
         const allAvailableModules = [
             'inventory', 
             'pos', 
             'repairs', 
             'reports', 
-            'analysis', 
-            'fiados', 
-            'loans', 
-            'inventory_aging'
+            'expenses',
+            'analysis'
         ];
 
         const profileData = {
