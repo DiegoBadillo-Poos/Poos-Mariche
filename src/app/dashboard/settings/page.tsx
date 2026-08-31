@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle, FileSpreadsheet, DownloadCloud, UploadCloud, Database, RefreshCcw, MapPin, Hash, ReceiptText, Wrench, Save, PiggyBank, Users, Home, Percent, ShieldAlert, Wallet, Landmark, DollarSign, Smartphone, CreditCard, Banknote, Info, Eye, FileText, MoveHorizontal, Hammer } from "lucide-react";
+import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle, FileSpreadsheet, DownloadCloud, UploadCloud, Database, RefreshCcw, MapPin, Hash, ReceiptText, Wrench, Save, PiggyBank, Users, Home, Percent, ShieldAlert, Wallet, Landmark, DollarSign, Smartphone, CreditCard, Banknote, Info, Eye, FileText, MoveHorizontal, Hammer, HandCoins } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { z } from "zod";
@@ -65,6 +65,7 @@ const PROTECTABLE_MODULES: { id: UserModule, label: string }[] = [
     { id: 'pos', label: 'Punto de Venta' },
     { id: 'repairs', label: 'Reparaciones' },
     { id: 'expenses', label: 'Gastos / Egresos' },
+    { id: 'fiados', label: 'Control de Fiados' },
     { id: 'reports', label: 'Reportes' },
     { id: 'analysis', label: 'Análisis de Negocio' },
 ];
@@ -145,7 +146,7 @@ function SettingsContent() {
 
     const availableProtectableModules = useMemo(() => {
         if (!profile) return [];
-        const enabled = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'expenses'];
+        const enabled = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'expenses', 'fiados'];
         return PROTECTABLE_MODULES.filter(m => enabled.includes(m.id));
     }, [profile]);
 

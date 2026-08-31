@@ -33,7 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid, AlertTriangle, ShieldOff, KeyRound, LockKeyhole, ShieldCheck, Briefcase } from "lucide-react";
+import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid, AlertTriangle, ShieldOff, KeyRound, LockKeyhole, ShieldCheck, Briefcase, HandCoins } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
@@ -44,6 +44,7 @@ const ALL_MODULES: { id: UserModule, label: string }[] = [
     { id: 'pos', label: 'Punto de Venta' },
     { id: 'repairs', label: 'Reparaciones' },
     { id: 'expenses', label: 'Gastos / Egresos' },
+    { id: 'fiados', label: 'Control de Fiados' },
     { id: 'reports', label: 'Reportes' },
     { id: 'analysis', label: 'Análisis de Negocio' },
 ];

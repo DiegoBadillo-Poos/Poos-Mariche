@@ -59,7 +59,8 @@ function AppContent({ children }: { children: React.ReactNode }) {
             'repairs', 
             'reports', 
             'expenses',
-            'analysis'
+            'analysis',
+            'fiados'
         ];
 
         const profileData = {

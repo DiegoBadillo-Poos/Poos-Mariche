@@ -12,7 +12,8 @@ import {
   Lock,
   Download,
   Receipt,
-  TrendingUp
+  TrendingUp,
+  HandCoins
 } from 'lucide-react';
 import {
   Sidebar,
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { href: '/dashboard/inventory', icon: Package, label: 'Inventario', module: 'inventory' },
   { href: '/dashboard/repairs', icon: Wrench, label: 'Reparaciones', module: 'repairs' },
   { href: '/dashboard/expenses', icon: Receipt, label: 'Gastos / Egresos', module: 'expenses' },
+  { href: '/dashboard/fiados', icon: HandCoins, label: 'Fiados / Créditos', module: 'fiados' },
   { href: '/dashboard/reports', icon: BarChart2, label: 'Reportes', module: 'reports' },
   { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis de Negocio', module: 'analysis' },
 ];
@@ -82,7 +84,7 @@ export function SidebarNav() {
       if (!item.module) return true;
       if (!profile) return false;
       
-      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis'];
+      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis', 'fiados'];
       return enabledModules.includes(item.module);
   });
 
