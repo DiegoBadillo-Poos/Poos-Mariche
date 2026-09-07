@@ -11,6 +11,7 @@ import { TicketPercent, Search, PackagePlus, Lock, Percent, Scale } from "lucide
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "../ui/button";
+import { useDebounce } from "use-debounce";
 
 
 type ProductGridProps = {
@@ -23,6 +24,7 @@ const ITEMS_PER_PAGE = 25;
 
 export function ProductGrid({ products, onProductSelect, isLoading }: ProductGridProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch] = useDebounce(searchTerm, 400);
   const { format, getSymbol, getFinalPrice, convert } = useCurrency();
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -36,7 +38,7 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
 
   const filteredProducts = useMemo(() => {
     if (!products) return [];
-    const term = searchTerm.toLowerCase().trim();
+    const term = debouncedSearch.toLowerCase().trim();
     
     return products.filter(
         (product) =>
@@ -48,11 +50,11 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
             (product.compatibleModels && product.compatibleModels.some(model => model.toLowerCase().includes(term)))
         )
     ).sort((a, b) => a.name.localeCompare(b.name));
-  }, [products, activeCategory, searchTerm]);
+  }, [products, activeCategory, debouncedSearch]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeCategory, searchTerm]);
+  }, [activeCategory, debouncedSearch]);
   
   const { paginatedProducts, totalPages } = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;

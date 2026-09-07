@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, type ReactNode } from "react";
@@ -18,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
 import { doc } from "firebase/firestore";
 import type { UserProfile } from "@/lib/types";
+import { Lock, Loader2 } from "lucide-react";
 
 const FALLBACK_PIN = "2026";
 
@@ -36,10 +36,15 @@ export function AdminAuthDialog({ children, onAuthorized }: AdminAuthDialogProps
     (firestore && user) ? doc(firestore, 'users', user.uid) : null,
     [firestore, user?.uid]
   );
-  const { data: profile } = useDoc<UserProfile>(profileRef);
+  const { data: profile, isLoading } = useDoc<UserProfile>(profileRef);
 
-  // Si el usuario ha desactivado el requerimiento de PIN, omitimos el diálogo
-  if (profile && profile.isPinRequired === false) {
+  // Si estamos cargando, mostramos un estado deshabilitado para evitar clics accidentales
+  if (isLoading) {
+      return <div className="opacity-50 pointer-events-none">{children}</div>;
+  }
+
+  // REGLA DE ORO: Si la seguridad está apagada, saltamos el PIN directamente.
+  if (profile && (profile.isPinRequired !== true || !profile.securityPin)) {
       return (
           <div 
             onClick={(e) => {
@@ -47,7 +52,7 @@ export function AdminAuthDialog({ children, onAuthorized }: AdminAuthDialogProps
                 e.stopPropagation();
                 onAuthorized();
             }}
-            className="contents"
+            className="contents cursor-pointer"
           >
               {children}
           </div>
@@ -58,17 +63,13 @@ export function AdminAuthDialog({ children, onAuthorized }: AdminAuthDialogProps
     const requiredPin = profile?.securityPin || FALLBACK_PIN;
 
     if (password === requiredPin) {
-      toast({
-        title: "Acceso Concedido",
-        description: "Acción de administrador autorizada.",
-      });
       setOpen(false);
       onAuthorized();
     } else {
       toast({
         variant: "destructive",
-        title: "Acceso Denegado",
-        description: "La contraseña de seguridad es incorrecta.",
+        title: "PIN Incorrecto",
+        description: "Operación no autorizada.",
       });
     }
     setPassword("");
@@ -87,27 +88,31 @@ export function AdminAuthDialog({ children, onAuthorized }: AdminAuthDialogProps
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Autenticación de Seguridad</DialogTitle>
-          <DialogDescription>
-            Esta acción requiere privilegios de gerente. Por favor, introduce tu clave de seguridad (PIN) para continuar.
+          <DialogTitle className="uppercase font-black text-primary flex items-center gap-2">
+            <Lock className="w-5 h-5" /> Validación de Gerente
+          </DialogTitle>
+          <DialogDescription className="font-bold">
+            Confirma tu PIN para realizar esta acción.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="admin-password">Clave de Seguridad (PIN)</Label>
+            <Label htmlFor="admin-password" className="text-[10px] font-black uppercase text-muted-foreground">PIN de Seguridad</Label>
             <Input
               id="admin-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={handleKeyDown}
+              className="text-center text-2xl font-black h-12"
+              placeholder="••••"
               autoFocus
             />
           </div>
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button type="submit" onClick={handleAuth}>Autorizar</Button>
+          <Button type="submit" onClick={handleAuth} className="font-bold">Autorizar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

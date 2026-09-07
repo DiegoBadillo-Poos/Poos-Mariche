@@ -27,16 +27,19 @@ export function initializeFirebase() {
 export function getSdks(firebaseApp: FirebaseApp) {
   const firestore = getFirestore(firebaseApp);
 
-  // Habilitar persistencia offline para multi-pestaña
-  // Esto permite que el negocio siga operando sin internet y sincronice al volver
+  /**
+   * Habilitar persistencia offline para multi-pestaña (IndexedDB).
+   * Esto guarda las consultas en la caché del navegador, reduciendo drásticamente
+   * las lecturas facturables y permitiendo que la app funcione sin internet.
+   */
   if (typeof window !== 'undefined') {
     enableMultiTabIndexedDbPersistence(firestore).catch((err) => {
       if (err.code === 'failed-precondition') {
-        // Múltiples pestañas abiertas, solo una puede tener persistencia activa
-        console.warn("Firestore offline persistence: Multiple tabs open.");
+        // Indica que hay múltiples pestañas abiertas y la persistencia ya está activa en otra
+        console.warn("Firestore Offline: Ya activa en otra pestaña.");
       } else if (err.code === 'unimplemented') {
-        // Navegador antiguo
-        console.warn("Firestore offline persistence: Browser not supported.");
+        // El navegador no soporta IndexedDB (poco común hoy en día)
+        console.warn("Firestore Offline: Navegador no compatible.");
       }
     });
   }

@@ -1,6 +1,6 @@
 "use client"
 
-import type { Sale, Payment, Product, CartItem, RepairJob, UserProfile, PaymentMethod } from "@/lib/types";
+import type { Sale, Payment, Product, CartItem, RepairJob, UserProfile, PaymentMethod, BusinessStats } from "@/lib/types";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { es } from "date-fns/locale";
@@ -77,24 +77,54 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
         setIsProcessing(true);
         try {
             await runTransaction(firestore, async (transaction) => {
+                // --- 1. LECTURAS (READS) ---
                 const repairJobSnap = sale.repairJobId ? await transaction.get(doc(firestore, 'users', user.uid, 'repair_jobs', sale.repairJobId)) : null;
                 const repairJobData = repairJobSnap?.exists() ? repairJobSnap.data() as RepairJob : null;
 
-                const productIdsToReturn = new Map<string, { quantity: number, isFromRepair: boolean }>();
+                const productIdsToRead = new Set<string>();
+                for (const item of sale.items) {
+                    if (!item.isCustom && !item.isRepair) productIdsToRead.add(item.productId);
+                }
+                if (repairJobData?.reservedParts) {
+                    repairJobData.reservedParts.forEach(p => productIdsToRead.add(p.productId));
+                }
 
-                sale.items.forEach(item => {
-                    if (item.isCustom) return;
-                    if (item.isRepair) return;
+                const productSnapshots = new Map<string, DocumentSnapshot>();
+                for(const pid of Array.from(productIdsToRead)) {
+                    const snap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
+                    productSnapshots.set(pid, snap);
+                }
+
+                const statsRef = doc(firestore, 'users', user.uid, 'system', 'estadisticas_actuales');
+                const statsSnap = await transaction.get(statsRef);
+                const currentStats = statsSnap.exists() ? statsSnap.data() as BusinessStats : { totalRealSales30d: 0, totalRealProfit30d: 0 };
+
+                // --- 2. CÁLCULOS ---
+                const productIdsToReturn = new Map<string, { quantity: number, isFromRepair: boolean }>();
+                let totalCostToDeductUSD = 0;
+
+                for (const item of sale.items) {
+                    if (item.isCustom) {
+                        totalCostToDeductUSD += (item.customCostPrice || 0) * item.quantity;
+                        continue;
+                    }
+                    if (item.isRepair) continue;
                     
+                    const pSnap = productSnapshots.get(item.productId);
+                    if (pSnap?.exists()) {
+                        totalCostToDeductUSD += (pSnap.data() as Product).costPrice * item.quantity;
+                    }
+
                     const existing = productIdsToReturn.get(item.productId) || { quantity: 0, isFromRepair: false };
                     productIdsToReturn.set(item.productId, { 
                         quantity: existing.quantity + item.quantity, 
                         isFromRepair: false 
                     });
-                });
+                }
 
                 if (repairJobData?.reservedParts) {
                     repairJobData.reservedParts.forEach(part => {
+                        totalCostToDeductUSD += part.costPrice * part.quantity;
                         const existing = productIdsToReturn.get(part.productId) || { quantity: 0, isFromRepair: true };
                         productIdsToReturn.set(part.productId, { 
                             quantity: existing.quantity + part.quantity, 
@@ -103,12 +133,14 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                     });
                 }
 
-                const productSnapshots = new Map<string, DocumentSnapshot>();
-                for(const pid of Array.from(productIdsToReturn.keys())) {
-                    const snap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
-                    productSnapshots.set(pid, snap);
-                }
+                const saleBcv = sale.bcvRateAtTime || 1;
+                const saleParallel = sale.parallelRateAtTime || 1;
+                const isSalePromo = sale.items.some(i => i.isPromo);
+                const rateFactor = isSalePromo ? 1 : (saleBcv / saleParallel);
+                const realRevenueUSD = (sale.actualPaidAmount ?? sale.totalAmount) * rateFactor;
+                const realProfitUSD = realRevenueUSD - totalCostToDeductUSD;
 
+                // --- 3. ESCRITURAS (WRITES) ---
                 if (repairJobSnap?.exists() && repairJobData) {
                     transaction.update(repairJobSnap.ref, { 
                         status: 'Pendiente', 
@@ -139,6 +171,12 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                         });
                     }
                 }
+
+                transaction.update(statsRef, {
+                    totalRealSales30d: Math.max(0, (currentStats.totalRealSales30d || 0) - realRevenueUSD),
+                    totalRealProfit30d: (currentStats.totalRealProfit30d || 0) - realProfitUSD,
+                    updatedAt: new Date().toISOString()
+                });
 
                 const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', sale.id!);
                 transaction.update(saleRef, { 

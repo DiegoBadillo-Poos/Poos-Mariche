@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -21,9 +20,6 @@ type SecurityGateProps = {
 export function SecurityGate({ children, module }: SecurityGateProps) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
-    
-    // El estado inicial es null (evaluando) para evitar parpadeos
-    const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
     const [pin, setPin] = useState("");
     
     const profileRef = useMemoFirebase(() => 
@@ -32,47 +28,34 @@ export function SecurityGate({ children, module }: SecurityGateProps) {
     );
     const { data: profile, isLoading: isProfileLoading } = useDoc<UserProfile>(profileRef);
 
-    useEffect(() => {
-        // Si el perfil aún está cargando, mantenemos el estado evaluando (null)
-        if (isProfileLoading || !profile) {
-            return;
+    // EVALUACIÓN DE ACCESO EN TIEMPO REAL
+    const isAuthorized = useMemo(() => {
+        if (isProfileLoading || !profile) return null;
+
+        // REGLA MAESTRA: Si la Seguridad Global está APAGADA, acceso total inmediato.
+        // No hay excepciones para Admin o Ajustes si el dueño decidió apagarlo.
+        if (profile.isPinRequired !== true) {
+            return true;
         }
 
-        const evaluateAccess = () => {
-            // REGLA 1: Si no hay un PIN configurado, acceso total (no hay nada que pedir)
-            if (!profile.securityPin) {
-                return true;
-            }
-
-            // REGLA 2: Si ya desbloqueó en esta sesión, acceso total
-            const sessionUnlocked = sessionStorage.getItem(SESSION_KEY) === 'true';
-            if (sessionUnlocked) {
-                return true;
-            }
-
-            // REGLA 3: Si la Seguridad Global está apagada, el acceso es libre para los módulos del taller (incluyendo Ajustes)
-            if (profile.isPinRequired === false) {
-                // El módulo 'admin' (Administración Central) siempre requiere PIN por ser de nivel superior
-                if (module === 'admin') return false;
-                return true;
-            }
-
-            // REGLA 4: Si la Seguridad Global está encendida, Ajustes y Admin SIEMPRE requieren PIN
-            if (module === 'settings' || module === 'admin') {
-                return false;
-            }
-
-            // REGLA 5: Solo bloquear si el módulo específico está en la lista de bloqueados
-            const activeLockedModules = profile.lockedModules || [];
-            if (activeLockedModules.includes(module as UserModule)) {
-                return false;
-            }
-
-            // Por defecto, si no está bloqueado explícitamente, es libre
+        // Si no hay PIN configurado (caso de cuenta nueva), no podemos bloquear.
+        if (!profile.securityPin) {
             return true;
-        };
+        }
 
-        setIsAuthorized(evaluateAccess());
+        // Si la sesión ya fue desbloqueada manualmente.
+        const sessionUnlocked = typeof window !== 'undefined' && sessionStorage.getItem(SESSION_KEY) === 'true';
+        if (sessionUnlocked) {
+            return true;
+        }
+
+        // Si llegamos aquí y el módulo es sensible, bloqueamos para pedir el PIN.
+        const activeLockedModules = profile.lockedModules || [];
+        if (module === 'admin' || module === 'settings' || activeLockedModules.includes(module as UserModule)) {
+            return false;
+        }
+
+        return true;
     }, [profile, isProfileLoading, module]);
 
     const handleUnlock = () => {
@@ -80,36 +63,31 @@ export function SecurityGate({ children, module }: SecurityGateProps) {
 
         if (pin === profile.securityPin) {
             sessionStorage.setItem(SESSION_KEY, 'true');
-            setIsAuthorized(true);
-            toast({ title: "Acceso Concedido", description: "Sección desbloqueada." });
+            window.location.reload(); // Recargamos para limpiar estados y validar todo el layout
+            toast({ title: "Acceso Concedido" });
         } else {
             toast({ 
                 variant: "destructive", 
                 title: "PIN Incorrecto", 
-                description: "Vuelve a intentarlo." 
+                description: "Verifica tu clave de acceso." 
             });
             setPin("");
         }
     };
 
-    // Mientras evalúa o carga el perfil, mostrar loader para evitar el "flash" de contenido
-    if (isAuthorized === null || isProfileLoading) {
+    if (isProfileLoading || isAuthorized === null) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-4 min-h-[400px]">
                 <Loader2 className="w-10 h-10 animate-spin text-primary opacity-20" />
                 <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest animate-pulse">
-                    Verificando Credenciales...
+                    Sincronizando Seguridad...
                 </p>
             </div>
         );
     }
 
-    // Si está autorizado, renderizar el contenido directamente
-    if (isAuthorized) {
-        return <>{children}</>;
-    }
+    if (isAuthorized) return <>{children}</>;
 
-    // Si no está autorizado, mostrar la pantalla de bloqueo
     return (
         <div className="flex-1 flex items-center justify-center p-4 bg-slate-100/50 backdrop-blur-sm">
             <Card className="max-w-sm w-full shadow-2xl border-t-4 border-primary animate-in fade-in zoom-in-95 duration-200">
@@ -117,9 +95,9 @@ export function SecurityGate({ children, module }: SecurityGateProps) {
                     <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
                         <Lock className="text-primary w-8 h-8" />
                     </div>
-                    <CardTitle className="text-xl font-black uppercase tracking-tight">Sección Protegida</CardTitle>
+                    <CardTitle className="text-xl font-black uppercase tracking-tight">Zona Protegida</CardTitle>
                     <CardDescription className="text-xs font-medium">
-                        Introduce tu PIN de Gerente para acceder a esta sección.
+                        Introduce el PIN de Gerente para continuar.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -142,7 +120,7 @@ export function SecurityGate({ children, module }: SecurityGateProps) {
                         DESBLOQUEAR AHORA
                     </Button>
                     <p className="text-[10px] text-center text-muted-foreground italic">
-                        Una vez desbloqueado, podrás navegar libremente mientras no cierres la pestaña.
+                        La seguridad global está activada en tus ajustes.
                     </p>
                 </CardContent>
             </Card>

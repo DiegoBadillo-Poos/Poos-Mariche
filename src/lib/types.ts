@@ -29,6 +29,8 @@ export type Product = {
   hasCustomMargin?: boolean;
   customMargin?: number;
   hasIVA?: boolean;
+  hasDiscount?: boolean;
+  discountAmount?: number;
   unit: ProductUnit;
   createdAt?: string;
 };
@@ -231,6 +233,12 @@ export type Sale = {
   actualPaidAmount?: number;
   bcvRateAtTime?: number;
   parallelRateAtTime?: number;
+};
+
+export type BusinessStats = {
+  totalRealSales30d: number;
+  totalRealProfit30d: number;
+  updatedAt: string;
 };
 
 export type ReconciliationPaymentMethodSummary = {

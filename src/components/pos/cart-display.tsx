@@ -145,9 +145,6 @@ function CustomerDialog({ onSave, currentName, currentID, sales }: { onSave: (na
     );
 }
 
-/**
- * Componente interno para gestionar el Popover de descuento con botón Aplicar
- */
 function DiscountItemControl({ productId, currentDiscount, onApply }: { productId: string, currentDiscount: number, onApply: (id: string, d: number) => void }) {
     const [tempVal, setTempVal] = useState(currentDiscount > 0 ? currentDiscount.toString() : "");
     const [isOpen, setIsOpen] = useState(false);
@@ -270,8 +267,12 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
       }, 0);
       const actualNetPaidInUSD = totalPaidInUSD - totalChangeInUSD;
 
+      const rateFactor = hasPromo ? 1 : (bcvRate / parallelRate);
+      const realIncomeUSD = actualNetPaidInUSD * rateFactor;
+
       try {
         await runTransaction(firestore, async (transaction) => {
+            // --- 1. PRIMERO: TODAS LAS LECTURAS (READS) ---
             const productIdsToGet = new Set<string>();
             const currentRepairJobSnap = (repairJobId && hasRepairInCart) ? await transaction.get(repairJobRef!) : null;
             const currentRepairJob = currentRepairJobSnap?.exists() ? currentRepairJobSnap.data() as RepairJob : null;
@@ -287,10 +288,17 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                 productSnapshots.set(id, snap);
             }
 
+            const statsRef = doc(firestore, 'users', user.uid, 'system', 'estadisticas_actuales');
+            const statsSnap = await transaction.get(statsRef);
+            const currentStats = statsSnap.exists() ? statsSnap.data() : { totalRealSales30d: 0, totalRealProfit30d: 0 };
+
+            // --- 2. SEGUNDO: CÁLCULOS LÓGICOS ---
+            let totalCostUSD = 0;
             const stockDeductions = new Map<string, { stock: number, reserved: number }>();
 
             if (currentRepairJob?.reservedParts && hasRepairInCart) {
                 for (const part of currentRepairJob.reservedParts) {
+                    totalCostUSD += (part.costPrice * part.quantity);
                     if (part.isManual) continue;
                     const current = stockDeductions.get(part.productId) || { stock: 0, reserved: 0 };
                     stockDeductions.set(part.productId, { 
@@ -301,7 +309,16 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
             }
 
             for (const item of cartWithPrices) {
-                if (item.isRepair || item.isCustom) continue;
+                if (item.isRepair) continue;
+                if (item.isCustom) {
+                    totalCostUSD += (item.customCostPrice || 0) * item.quantity;
+                    continue;
+                }
+                const pSnap = productSnapshots.get(item.productId);
+                if (pSnap?.exists()) {
+                    totalCostUSD += (pSnap.data() as Product).costPrice * item.quantity;
+                }
+
                 const current = stockDeductions.get(item.productId) || { stock: 0, reserved: 0 };
                 stockDeductions.set(item.productId, { 
                     stock: current.stock + item.quantity, 
@@ -309,6 +326,9 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                 });
             }
 
+            const profitUSD = realIncomeUSD - totalCostUSD;
+
+            // --- 3. TERCERO: TODAS LAS ESCRITURAS (WRITES) ---
             for (const [pid, ded] of Array.from(stockDeductions.entries())) {
                 const pSnap = productSnapshots.get(pid);
                 if (pSnap?.exists()) {
@@ -360,8 +380,13 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                 });
             }
 
+            transaction.set(statsRef, {
+                totalRealSales30d: (currentStats.totalRealSales30d || 0) + realIncomeUSD,
+                totalRealProfit30d: (currentStats.totalRealProfit30d || 0) + profitUSD,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+
             const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', saleId);
-            
             const saleData = cleanObject({
                 id: saleId,
                 items: cartWithPrices,
@@ -465,7 +490,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                     if (item.isRepair) {
                         hasPromoAvailable = !!activeRepairJob?.reservedParts?.some(part => {
                             const p = allProducts.find(prod => prod.id === part.productId);
-                            return p && p.promoPrice && p.promoPrice > 0 && !part.isPromo;
+                            return p && p.promoPrice && p.promoPrice > 0;
                         });
                     } else {
                         hasPromoAvailable = !!(productData?.promoPrice && productData.promoPrice > 0);
@@ -482,7 +507,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                                     <span className={cn((item.isGift || item.isWarranty) && "line-through text-muted-foreground")}>{item.name}</span>
                                     <div className="flex flex-wrap gap-1">
                                         {item.isPromo && <Badge className="bg-blue-600 text-white text-[9px] h-4 px-1">OFERTA</Badge>}
-                                        {(item.discount || 0) > 0 && <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-200 text-amber-700 font-bold">-${item.discount}</Badge>}
+                                        {(item.discount || 0) > 0 && <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-200 text-amber-700 font-bold">-${item.discount.toFixed(2)} DESC</Badge>}
                                         {item.isGift && <Badge className="bg-green-600 text-white text-[9px] h-4 px-1">OBSEQUIO</Badge>}
                                         {item.isWarranty && <Badge className="bg-orange-600 text-white text-[9px] h-4 px-1">GARANTÍA</Badge>}
                                         {item.isRepair && <Badge variant="outline" className="text-[9px] h-4 px-1">REPARACIÓN</Badge>}
@@ -521,7 +546,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                                                         <TicketPercent className="h-3.5 w-3.5" />
                                                     </Button>
                                                 </TooltipTrigger>
-                                                <TooltipContent><p>Activar Precio Oferta</p></TooltipContent>
+                                                <TooltipContent><p>Activar Tasa de Reposición (Oferta)</p></TooltipContent>
                                             </Tooltip>
                                         )}
                                         

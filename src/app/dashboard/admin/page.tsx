@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/page-header";
 import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, setDocumentNonBlocking, useDoc, deleteDocumentNonBlocking, sendResetEmail } from "@/firebase";
-import { collection, doc, writeBatch, getDocs } from "firebase/firestore";
+import { collection, doc, query, where } from "firebase/firestore";
 import type { UserProfile, UserModule } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -33,10 +33,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid, AlertTriangle, ShieldOff, KeyRound, LockKeyhole, ShieldCheck, Briefcase, HandCoins } from "lucide-react";
+import { Edit, Megaphone, Save, Trash2, Loader2, Users, LayoutGrid, ShieldOff, KeyRound, LockKeyhole, ShieldCheck, Briefcase, Activity, Database, Zap, Globe, Ban, CheckCircle2, CalendarDays } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
 import { SecurityGate } from "@/components/security-gate";
 
 const ALL_MODULES: { id: UserModule, label: string }[] = [
@@ -91,38 +90,38 @@ function AnnouncementEditor() {
     };
 
     return (
-        <Card className="border-primary/20 shadow-lg">
-            <CardHeader className="bg-primary/5">
-                <CardTitle className="flex items-center gap-2 text-primary"><Megaphone className="w-5 h-5"/> Anuncio Global</CardTitle>
-                <CardDescription>Envía un mensaje a todos los negocios.</CardDescription>
+        <Card className="border-primary/20 shadow-lg h-full">
+            <CardHeader className="bg-primary/5 pb-3">
+                <CardTitle className="flex items-center gap-2 text-primary text-sm uppercase font-black"><Megaphone className="w-4 h-4"/> Comunicado Global</CardTitle>
             </CardHeader>
-            <CardContent className="pt-6 space-y-4">
+            <CardContent className="pt-4 space-y-4">
                 <div className="space-y-2">
-                    <Label>Mensaje</Label>
+                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Mensaje para todos los negocios</Label>
                     <Input 
                         value={message} 
                         onChange={(e) => { setMessage(e.target.value); setIsDirty(true); }} 
-                        placeholder="Ej: Nueva función disponible..." 
+                        placeholder="Ej: Mantenimiento programado..." 
+                        className="text-xs"
                     />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label>Nivel</Label>
+                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Nivel</Label>
                         <Select value={type} onValueChange={(v) => { setType(v); setIsDirty(true); }}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="info">Info</SelectItem>
-                                <SelectItem value="warning">Advertencia</SelectItem>
-                                <SelectItem value="critical">Crítico</SelectItem>
+                                <SelectItem value="info" className="text-xs">Info</SelectItem>
+                                <SelectItem value="warning" className="text-xs">Advertencia</SelectItem>
+                                <SelectItem value="critical" className="text-xs">Crítico</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="flex items-center gap-2 pt-8">
+                    <div className="flex items-center gap-2 pt-6">
                         <Switch checked={active} onCheckedChange={(v) => { setActive(v); setIsDirty(true); }} />
-                        <Label>Activo</Label>
+                        <Label className="text-[10px] font-bold uppercase">Activo</Label>
                     </div>
                 </div>
-                <Button className="w-full" onClick={handleSave} disabled={!isDirty}><Save className="mr-2 h-4 w-4"/> Publicar</Button>
+                <Button className="w-full h-9 text-xs font-bold" onClick={handleSave} disabled={!isDirty}><Save className="mr-2 h-3.5 w-3.5"/> Publicar</Button>
             </CardContent>
         </Card>
     );
@@ -163,22 +162,50 @@ function UserEditDialog({
         <>
             <Dialog open={isOpen} onOpenChange={onOpenChange}>
                 <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl">
-                    <div className="bg-slate-900 text-white p-6">
+                    <div className={cn("text-white p-6", status === 'expired' ? "bg-red-600" : "bg-slate-900")}>
                         <DialogHeader>
                             <DialogTitle className="text-xl font-black uppercase flex items-center gap-2">
-                                <Briefcase className="w-6 h-6 text-primary-foreground" /> Gestión de Negocio
+                                {status === 'expired' ? <Ban className="w-6 h-6" /> : <Briefcase className="w-6 h-6 text-primary-foreground" />} 
+                                Gestión de Negocio
                             </DialogTitle>
-                            <DialogDescription className="text-slate-400 font-bold">
+                            <DialogDescription className="text-white/60 font-bold">
                                 Perfil del Cliente: {user.email}
                             </DialogDescription>
                         </DialogHeader>
                     </div>
                     
                     <div className="p-6 space-y-8 bg-white">
-                        {/* SECCIÓN 1: DATOS COMERCIALES */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 border-b pb-2 flex items-center gap-2">
-                                <Users className="w-4 h-4" /> 1. Información Comercial
+                                <ShieldCheck className="w-4 h-4" /> 1. Estatus de Licencia y Acceso
+                            </h3>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2 p-4 rounded-xl border-2 bg-slate-50">
+                                    <Label className="text-[10px] font-black uppercase text-muted-foreground">Estado de Cuenta</Label>
+                                    <Select value={status} onValueChange={(val: any) => setStatus(val)}>
+                                        <SelectTrigger className={cn("font-black h-12", status === 'active' ? "text-green-600 border-green-200" : "text-red-600 border-red-200")}>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="active" className="text-green-600 font-black uppercase">Activa / Pagada</SelectItem>
+                                            <SelectItem value="trial" className="text-blue-600 font-black uppercase">Periodo de Prueba</SelectItem>
+                                            <SelectItem value="expired" className="text-red-600 font-black uppercase">Suspendida / Vencida</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-[9px] text-muted-foreground italic">Si seleccionas "Suspendida", el usuario perderá acceso al sistema de inmediato.</p>
+                                </div>
+                                <div className="space-y-2 p-4 rounded-xl border-2 bg-slate-50">
+                                    <Label className="text-[10px] font-black uppercase text-muted-foreground">Fecha de Vencimiento</Label>
+                                    <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="font-black h-12" />
+                                    <p className="text-[9px] text-muted-foreground italic">El sistema bloqueará el acceso automáticamente al pasar esta fecha.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 border-b pb-2 flex items-center gap-2">
+                                <Users className="w-4 h-4" /> 2. Información Comercial
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
@@ -190,69 +217,49 @@ function UserEditDialog({
                                     <Input value={email} disabled className="bg-slate-50" />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold">Estatus de Licencia</Label>
-                                    <Select value={status} onValueChange={(val: any) => setStatus(val)}>
-                                        <SelectTrigger className="font-bold"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="active" className="text-green-600 font-bold">ACTIVA</SelectItem>
-                                            <SelectItem value="trial" className="text-blue-600 font-bold">PRUEBA</SelectItem>
-                                            <SelectItem value="expired" className="text-destructive font-bold">EXPIRADA</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold">Vencimiento</Label>
-                                    <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="font-bold" />
-                                </div>
-                            </div>
                         </div>
 
-                        {/* SECCIÓN 2: SEGURIDAD Y ACCESO */}
                         <div className="space-y-4 p-5 rounded-2xl bg-blue-50 border-2 border-blue-100 shadow-sm">
                             <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-700 flex items-center gap-2">
-                                <ShieldCheck className="w-4 h-4" /> 2. Seguridad de Acceso
+                                <KeyRound className="w-4 h-4" /> 3. Seguridad de Acceso
                             </h3>
                             
-                            <div className="bg-white p-4 rounded-xl border border-blue-200 flex justify-between items-center gap-4">
-                                <div className="space-y-1">
-                                    <p className="text-sm font-black text-slate-800 uppercase tracking-tight">Restablecer Contraseña de Inicio</p>
-                                    <p className="text-[11px] text-muted-foreground leading-snug">
-                                        Si el usuario olvidó su clave, envía un comando de reseteo. Recibirá un correo con un botón para crear una nueva contraseña.
-                                    </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="bg-white p-3 rounded-xl border border-blue-200 flex flex-col justify-between gap-3">
+                                    <div className="space-y-0.5">
+                                        <p className="text-xs font-black text-slate-800 uppercase">Contraseña</p>
+                                        <p className="text-[10px] text-muted-foreground leading-tight">Envía link de recuperación.</p>
+                                    </div>
+                                    <Button 
+                                        type="button" 
+                                        variant="outline"
+                                        className="h-9 font-black text-[10px] uppercase tracking-widest border-blue-600 text-blue-600"
+                                        onClick={() => onSendResetEmail(user.email)}
+                                    >
+                                        Enviar Comando
+                                    </Button>
                                 </div>
-                                <Button 
-                                    type="button" 
-                                    className="shrink-0 h-12 px-6 font-black text-xs bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 uppercase tracking-widest"
-                                    onClick={() => onSendResetEmail(user.email)}
-                                >
-                                    <LockKeyhole className="w-4 h-4 mr-2" /> Enviar Comando
-                                </Button>
-                            </div>
 
-                            <div className="bg-white p-4 rounded-xl border border-blue-200 flex justify-between items-center gap-4">
-                                <div className="space-y-1">
-                                    <p className="text-sm font-black text-slate-800 uppercase tracking-tight">Seguridad Local (PIN Gerente)</p>
-                                    <p className="text-[11px] text-muted-foreground leading-snug">
-                                        Borra la clave de 4 dígitos que protege las secciones sensibles dentro de la tienda.
-                                    </p>
+                                <div className="bg-white p-3 rounded-xl border border-blue-200 flex flex-col justify-between gap-3">
+                                    <div className="space-y-0.5">
+                                        <p className="text-xs font-black text-slate-800 uppercase">PIN Local</p>
+                                        <p className="text-[10px] text-muted-foreground leading-tight">Borra el PIN de gerente olvidado.</p>
+                                    </div>
+                                    <Button 
+                                        type="button" 
+                                        variant="outline"
+                                        className="h-9 font-black text-[10px] border-destructive/20 text-destructive hover:bg-destructive/5 uppercase tracking-widest"
+                                        onClick={() => setIsResetConfirmOpen(true)}
+                                    >
+                                        Borrar PIN
+                                    </Button>
                                 </div>
-                                <Button 
-                                    type="button" 
-                                    variant="outline"
-                                    className="shrink-0 h-12 px-6 font-black text-xs border-destructive/20 text-destructive hover:bg-destructive/5 uppercase tracking-widest"
-                                    onClick={() => setIsResetConfirmOpen(true)}
-                                >
-                                    <ShieldOff className="w-4 h-4 mr-2" /> Borrar PIN
-                                </Button>
                             </div>
                         </div>
 
-                        {/* SECCIÓN 3: MÓDULOS */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 border-b pb-2 flex items-center gap-2">
-                                <LayoutGrid className="w-4 h-4" /> 3. Módulos Habilitados
+                                <LayoutGrid className="w-4 h-4" /> 4. Módulos Habilitados
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 {ALL_MODULES.map((m) => (
@@ -267,7 +274,12 @@ function UserEditDialog({
 
                     <div className="p-6 bg-slate-50 border-t flex justify-between items-center">
                         <Button variant="ghost" onClick={() => onOpenChange(false)} className="font-bold text-slate-500 uppercase">Cerrar</Button>
-                        <Button onClick={handleSave} className="h-12 px-10 font-black shadow-xl uppercase tracking-tighter">Guardar Todos los Cambios</Button>
+                        <Button 
+                            onClick={handleSave} 
+                            className={cn("h-12 px-10 font-black shadow-xl uppercase tracking-tighter", status === 'expired' ? "bg-red-600 hover:bg-red-700" : "bg-slate-900 hover:bg-black")}
+                        >
+                            Confirmar Cambios
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -276,24 +288,15 @@ function UserEditDialog({
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2 uppercase font-black">
-                            <KeyRound className="text-destructive w-6 h-6" /> ¿Eliminar PIN de Seguridad?
+                            <KeyRound className="text-destructive w-6 h-6" /> ¿Eliminar PIN?
                         </AlertDialogTitle>
                         <AlertDialogDescription className="text-slate-600">
-                            Esta acción borrará la clave actual de <span className="font-bold text-slate-900">{user.businessName}</span>. 
-                            El usuario deberá configurar una clave nueva para entrar a las áreas restringidas.
+                            Esta acción borrará la clave actual de <span className="font-bold text-slate-900">{user.businessName}</span>.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction 
-                            onClick={() => {
-                                onResetPin(user.uid);
-                                setIsResetConfirmOpen(false);
-                            }}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90 uppercase font-black"
-                        >
-                            Confirmar Reseteo
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={() => { onResetPin(user.uid); setIsResetConfirmOpen(false); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 uppercase font-black">Confirmar</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -313,55 +316,45 @@ function AdminContent() {
     );
     const { data: users, isLoading } = useCollection<UserProfile>(usersCollection);
 
+    const activeUsers = useMemo(() => {
+        if (!users) return 0;
+        const fiveMinsAgo = subMinutes(new Date(), 5);
+        return users.filter(u => u.updatedAt && isAfter(parseISO(u.updatedAt), fiveMinsAgo)).length;
+    }, [users]);
+
     const handleUpdateUser = (userId: string, data: Partial<UserProfile>) => {
         if (!firestore) return;
         const userRef = doc(firestore, 'users', userId);
         updateDocumentNonBlocking(userRef, data);
-        toast({ title: "Cambios guardados con éxito" });
+        toast({ title: "Cambios guardados" });
     };
 
     const handleSendPasswordReset = async (email: string) => {
         if (!auth) return;
         try {
             await sendResetEmail(auth, email);
-            toast({ 
-                title: "Comando de Seguridad Enviado", 
-                description: `Se ha enviado el enlace de recuperación a ${email}.` 
-            });
+            toast({ title: "Enlace enviado a " + email });
         } catch (e: any) {
-            toast({ 
-                variant: "destructive", 
-                title: "Error al enviar", 
-                description: "Verifica que el email sea válido." 
-            });
+            toast({ variant: "destructive", title: "Error al enviar" });
         }
     };
 
     const handleResetPin = (userId: string) => {
         if (!firestore) return;
         const userRef = doc(firestore, 'users', userId);
-        updateDocumentNonBlocking(userRef, { 
-            securityPin: "", 
-            isPinRequired: false 
-        });
-        toast({ 
-            title: "Seguridad Reiniciada", 
-            description: "El PIN ha sido eliminado correctamente." 
-        });
+        updateDocumentNonBlocking(userRef, { securityPin: "", isPinRequired: false });
+        toast({ title: "PIN Eliminado" });
     };
 
     const handleDeleteUser = () => {
         if (!firestore || !userToDelete) return;
-        
         if (userToDelete.uid === currentUser?.uid) {
-            toast({ title: "Acción Denegada", description: "No puedes eliminar tu propia cuenta.", variant: "destructive" });
+            toast({ title: "Acción Denegada", variant: "destructive" });
             setUserToDelete(null);
             return;
         }
-
-        const userRef = doc(firestore, 'users', userToDelete.uid);
-        deleteDocumentNonBlocking(userRef);
-        toast({ title: "Cuenta Eliminada permanentemente" });
+        deleteDocumentNonBlocking(doc(firestore, 'users', userToDelete.uid));
+        toast({ title: "Cuenta Eliminada" });
         setUserToDelete(null);
     };
 
@@ -376,69 +369,90 @@ function AdminContent() {
         <>
             <PageHeader title="Administración Central" />
             <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
+                
+                <div className="grid gap-6 md:grid-cols-2">
+                    <Card className="shadow-sm border-primary/10">
+                        <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-muted-foreground flex items-center gap-1.5"><Globe className="w-3 h-3"/> Total Negocios Registrados</CardTitle></CardHeader>
+                        <CardContent><div className="text-3xl font-black text-slate-800">{users?.length || 0}</div></CardContent>
+                    </Card>
+                    <Card className="shadow-sm border-green-200">
+                        <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-green-600 flex items-center gap-1.5"><Activity className="w-3 h-3"/> Negocios en Línea</CardTitle></CardHeader>
+                        <CardContent><div className="text-3xl font-black text-green-600">{activeUsers}</div></CardContent>
+                    </Card>
+                </div>
+
                 <div className="grid gap-6 md:grid-cols-3">
-                    <div className="md:col-span-2 grid gap-4 grid-cols-2">
-                        <Card className="shadow-sm border-primary/10">
-                            <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-muted-foreground">Total Negocios</CardTitle></CardHeader>
-                            <CardContent><div className="text-3xl font-black text-primary">{users?.length || 0}</div></CardContent>
-                        </Card>
-                        <Card className="shadow-sm border-green-200">
-                            <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-muted-foreground">Licencias Activas</CardTitle></CardHeader>
-                            <CardContent><div className="text-3xl font-black text-green-600">{users?.filter(u => u.licenseStatus === 'active').length || 0}</div></CardContent>
+                    <div className="md:col-span-2">
+                        <Card className="shadow-lg h-full">
+                            <CardHeader className="flex flex-row items-center justify-between border-b bg-slate-50/50">
+                                <div>
+                                    <CardTitle className="text-lg font-black uppercase">Directorio de Clientes</CardTitle>
+                                    <CardDescription className="text-[10px] font-bold uppercase">Gestión de accesos y licencias.</CardDescription>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-muted/30">
+                                            <TableHead className="text-[10px] font-black uppercase">Negocio / Cliente</TableHead>
+                                            <TableHead className="text-[10px] font-black uppercase">Estado</TableHead>
+                                            <TableHead className="text-[10px] font-black uppercase">Registro</TableHead>
+                                            <TableHead className="text-[10px] font-black uppercase">Última Actividad</TableHead>
+                                            <TableHead className="text-right text-[10px] font-black uppercase">Acciones</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {sortedUsers.map((u) => {
+                                            const isOnline = u.updatedAt && isAfter(parseISO(u.updatedAt), subMinutes(new Date(), 5));
+                                            const isActuallyExpired = u.licenseStatus === 'expired' || (u.licenseExpiry && isAfter(new Date(), parseISO(u.licenseExpiry)));
+
+                                            return (
+                                                <TableRow key={u.uid} className={cn("hover:bg-muted/10", isActuallyExpired && "bg-red-50/50")}>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={cn("w-2 h-2 rounded-full", isOnline ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" : "bg-slate-300")} />
+                                                            <div className="flex flex-col">
+                                                                <div className="font-black text-xs uppercase text-slate-800">{u.businessName || "SIN NOMBRE"}</div>
+                                                                <div className="text-[9px] text-muted-foreground font-medium">{u.email}</div>
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className={cn("text-[8px] font-black uppercase tracking-tighter px-1.5 py-0", !isActuallyExpired ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200")}>
+                                                            {!isActuallyExpired ? 'ACTIVA' : 'SUSPENDIDA'}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-[10px] font-bold text-muted-foreground uppercase">
+                                                        {u.createdAt ? format(parseISO(u.createdAt), "dd/MM/yy", { locale: es }) : 'N/A'}
+                                                    </TableCell>
+                                                    <TableCell className="text-[10px] font-bold text-muted-foreground uppercase">
+                                                        {u.updatedAt ? format(parseISO(u.updatedAt), "dd/MM/yy HH:mm", { locale: es }) : 'N/A'}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex justify-end gap-1">
+                                                            <Button 
+                                                                variant={isActuallyExpired ? "destructive" : "outline"} 
+                                                                size="sm" 
+                                                                className="h-7 text-[9px] font-black uppercase" 
+                                                                onClick={() => setEditingUser(u)}
+                                                            >
+                                                                Gestionar
+                                                            </Button>
+                                                            <Button variant="ghost" size="sm" className="h-7 w-7 text-destructive" onClick={() => setUserToDelete(u)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
                         </Card>
                     </div>
-                    <div className="md:col-span-1">
+                    <div className="md:col-span-1 space-y-6">
                         <AnnouncementEditor />
                     </div>
                 </div>
-                <Card className="shadow-lg">
-                    <CardHeader className="flex flex-row items-center justify-between border-b bg-slate-50/50">
-                        <div>
-                            <CardTitle className="text-lg font-black uppercase">Directorio de Usuarios</CardTitle>
-                            <CardDescription className="text-[10px] font-bold uppercase">Gestión de accesos y licencias del sistema.</CardDescription>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="bg-muted/30">
-                                    <TableHead className="text-[10px] font-black uppercase">Negocio / Cliente</TableHead>
-                                    <TableHead className="text-[10px] font-black uppercase">Estatus Licencia</TableHead>
-                                    <TableHead className="text-[10px] font-black uppercase">Última Conexión</TableHead>
-                                    <TableHead className="text-right text-[10px] font-black uppercase">Acciones</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {sortedUsers.map((u) => (
-                                    <TableRow key={u.uid} className="hover:bg-muted/10">
-                                        <TableCell>
-                                            <div className="font-black text-xs uppercase text-slate-800">{u.businessName || "SIN NOMBRE"}</div>
-                                            <div className="text-[10px] text-muted-foreground font-medium">{u.email}</div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant={u.licenseStatus === 'active' ? 'default' : 'destructive'} className="text-[9px] font-black uppercase tracking-tighter">
-                                                {u.licenseStatus}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-[10px] font-bold text-muted-foreground uppercase">
-                                            {u.updatedAt ? format(parseISO(u.updatedAt), "dd/MM/yy HH:mm", { locale: es }) : 'N/A'}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="outline" size="sm" className="h-8 text-[10px] font-black uppercase border-primary/20" onClick={() => setEditingUser(u)}>
-                                                    <Edit className="w-3.5 h-3.5 mr-1" /> Gestionar
-                                                </Button>
-                                                <Button variant="ghost" size="sm" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => setUserToDelete(u)}>
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
-                </Card>
             </main>
 
             {editingUser && (
@@ -456,15 +470,11 @@ function AdminContent() {
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle className="font-black uppercase">¿Eliminar este negocio?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Esta acción revocará el acceso permanentemente para <span className="font-bold text-foreground">"{userToDelete?.businessName}"</span>. No se puede deshacer.
-                        </AlertDialogDescription>
+                        <AlertDialogDescription>Esta acción revocará el acceso permanentemente. No se puede deshacer.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-black">
-                            Eliminar definitivamente
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-black">Eliminar</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

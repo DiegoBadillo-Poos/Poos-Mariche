@@ -1,7 +1,6 @@
-
 "use client";
 
-import type { Product, Sale, RepairJob, UserModule } from "@/lib/types";
+import type { Product, Sale, RepairJob, UserModule, BusinessStats } from "@/lib/types";
 import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -9,36 +8,24 @@ import { Skeleton } from "../ui/skeleton";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { subDays, startOfMonth, isAfter, differenceInDays, parseISO } from "date-fns";
+import { Progress } from "../ui/progress";
+import { subDays, startOfMonth, isAfter, parseISO } from "date-fns";
 import { useCurrency } from "@/hooks/use-currency";
-import { cn } from "@/lib/utils";
+import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
+import { doc } from "firebase/firestore";
 import { 
     TrendingUp, 
     Flame, 
-    Ghost, 
-    Zap, 
-    Layers,
-    DollarSign,
-    Package,
-    Info,
-    AlertTriangle,
-    Star,
-    ZapIcon,
-    AlertCircle,
-    ShoppingCart,
-    ChevronLeft,
-    ChevronRight,
-    Search,
-    ArrowRightCircle,
-    History,
+    Snowflake,
     Target,
     ShieldAlert,
     Lightbulb,
-    ArrowUpRight
+    Sparkles,
+    Trash2,
+    ChevronLeft,
+    ChevronRight,
+    Package
 } from "lucide-react";
-import { Progress } from "../ui/progress";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { ReplenishStockDialog } from "../inventory/replenish-stock-dialog";
 
 type AnalysisViewProps = {
     sales: Sale[];
@@ -49,166 +36,157 @@ type AnalysisViewProps = {
     isAdmin?: boolean;
 };
 
-type DateRangeFilter = '7d' | '30d' | 'this_month';
+const ITEMS_PER_PAGE = 10;
 
-const ITEMS_PER_PAGE = 15;
-
-export function AnalysisView({ sales, products, repairJobs, isLoading, enabledModules, isAdmin }: AnalysisViewProps) {
-    const [dateRange, setDateRange] = useState<DateRangeFilter>('30d');
-    const [replenishProduct, setReplenishProduct] = useState<Product | null>(null);
-    const [currentPage, setCurrentPage] = useState(1);
+export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoading, enabledModules }: AnalysisViewProps) {
+    const { firestore, user } = useFirebase();
+    const [dateRange, setDateRange] = useState<'7d' | '30d' | 'this_month'>('30d');
+    const [starPage, setStarPage] = useState(1);
+    const [coldPage, setColdPage] = useState(1);
     const { format: formatCurrency, getFinalPrice, parallelRate, bcvRate } = useCurrency();
+
+    const statsRef = useMemoFirebase(() => 
+        (firestore && user) ? doc(firestore, 'users', user.uid, 'system', 'estadisticas_actuales') : null,
+        [firestore, user?.uid]
+    );
+    const { data: aggregatedStats, isLoading: statsLoading } = useDoc<BusinessStats>(statsRef);
 
     const showRepairs = enabledModules?.includes('repairs') ?? true;
 
     useEffect(() => {
-        setCurrentPage(1);
+        setStarPage(1);
+        setColdPage(1);
     }, [dateRange]);
 
     const stats = useMemo(() => {
-        if (isLoading || !sales || !products || !repairJobs) return null;
+        if (itemsLoading || !sales || !products || !repairJobs) return null;
 
         const now = new Date();
         let currentStart: Date;
-        let daysInPeriod: number;
 
         switch (dateRange) {
-            case '7d':
-                currentStart = subDays(now, 7);
-                daysInPeriod = 7;
-                break;
-            case 'this_month':
-                currentStart = startOfMonth(now);
-                daysInPeriod = Math.max(1, differenceInDays(now, currentStart));
-                break;
+            case '7d': currentStart = subDays(now, 7); break;
+            case 'this_month': currentStart = startOfMonth(now); break;
             case '30d':
-            default:
-                currentStart = subDays(now, 30);
-                daysInPeriod = 30;
-                break;
+            default: currentStart = subDays(now, 30); break;
         }
 
         const filterByRange = (items: any[], start: Date) => 
             items.filter(item => {
                 const dateStr = item.transactionDate || item.createdAt;
                 if (!dateStr) return false;
-                return isAfter(parseISO(dateStr), start);
+                const itemDate = parseISO(dateStr);
+                return isAfter(itemDate, start);
             });
 
         const currentSales = filterByRange(sales, currentStart).filter(s => s.status === 'completed');
 
-        // GANANCIA REAL (Ajustada a Tasa de Reposición)
-        const currentProfit = currentSales.reduce((acc, s) => {
-            const nominalIncome = s.actualPaidAmount ?? s.totalAmount;
-            const saleBcv = s.bcvRateAtTime || bcvRate;
-            const saleParallel = s.parallelRateAtTime || parallelRate;
-            const isSalePromo = s.items.some(i => i.isPromo);
-            const rateFactor = isSalePromo ? 1 : (saleBcv / saleParallel);
-            const realIncome = nominalIncome * rateFactor;
+        let currentProfit = 0;
+        if (dateRange === '30d' && aggregatedStats) {
+            currentProfit = aggregatedStats.totalRealProfit30d;
+        } else {
+            currentProfit = currentSales.reduce((acc, s) => {
+                const nominalIncome = s.actualPaidAmount ?? s.totalAmount;
+                const saleBcv = s.bcvRateAtTime || bcvRate;
+                const saleParallel = s.parallelRateAtTime || parallelRate;
+                const isSalePromo = s.items.some(i => i.isPromo);
+                const rateFactor = isSalePromo ? 1 : (saleBcv / saleParallel);
+                const realIncome = nominalIncome * rateFactor;
 
-            let cost = 0;
-            s.items.forEach(item => {
-                if (item.isCustom) cost += (item.customCostPrice || 0) * item.quantity;
-                else {
-                    const p = products.find(prod => prod.id === item.productId);
-                    cost += (p?.costPrice || 0) * item.quantity;
-                }
-            });
-            const itemsTotalBillable = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            const paymentRatio = itemsTotalBillable > 0 ? nominalIncome / itemsTotalBillable : 1;
-            
-            return acc + (realIncome - (cost * paymentRatio));
-        }, 0);
+                let cost = 0;
+                s.items.forEach(item => {
+                    if (item.isCustom) {
+                        cost += (item.customCostPrice || 0) * item.quantity;
+                    } else {
+                        const p = products.find(prod => prod.id === item.productId);
+                        cost += (p?.costPrice || 0) * item.quantity;
+                    }
+                });
 
-        // SALUD DE INVENTARIO CON FILTRO ANTI-RUIDO
-        const inventoryHealth = products
-            .filter(p => !((p.stockLevel <= 0) && (currentSales.reduce((acc, s) => acc + (s.items.find(i => i.productId === p.id)?.quantity || 0), 0) === 0)))
-            .map(p => {
-                const soldInPeriod = currentSales.reduce((acc, s) => {
-                    const item = s.items.find(i => i.productId === p.id);
-                    return acc + (item?.quantity || 0);
-                }, 0);
+                const itemsTotalBillable = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                const paymentRatio = itemsTotalBillable > 0 ? nominalIncome / itemsTotalBillable : 1;
+                return acc + (realIncome - (cost * paymentRatio));
+            }, 0);
+        }
 
-                const velocity = soldInPeriod / daysInPeriod;
-                const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
-                
-                const nominalRetailPrice = getFinalPrice(p);
-                const isProductPromo = !!(p.promoPrice && p.promoPrice > 0);
-                const realRetailPrice = isProductPromo ? (p.promoPrice || nominalRetailPrice) : (nominalRetailPrice * (bcvRate / parallelRate));
-                
-                const margin = p.costPrice > 0 ? ((realRetailPrice - p.costPrice) / p.costPrice) * 100 : 0;
+        // CÁLCULO DE MERCANCÍA FRÍA (Sin ventas en los últimos 5 días)
+        const fiveDaysAgo = subDays(now, 5);
+        const coldProducts = products.filter(p => {
+            const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
+            if (available <= 0) return false;
 
-                let status: 'STAR' | 'TRACTION' | 'DORMANT' | 'CRITICAL' | 'STABLE' = 'STABLE';
-                if (available < 0) status = 'CRITICAL';
-                else if (soldInPeriod > 0 && margin > 40) status = 'STAR';
-                else if (soldInPeriod > 1 && margin <= 40) status = 'TRACTION';
-                else if (soldInPeriod === 0 && available > 0 && (!p.createdAt || differenceInDays(now, parseISO(p.createdAt)) > 15)) status = 'DORMANT';
+            // Verificar si el producto se ha vendido en los últimos 5 días
+            const soldInLast5Days = sales.some(s => 
+                s.status === 'completed' && 
+                s.transactionDate && 
+                isAfter(parseISO(s.transactionDate), fiveDaysAgo) &&
+                s.items.some(i => i.productId === p.id)
+            );
 
-                return { ...p, soldInPeriod, velocity, available, margin, status, realRetailPrice };
-            });
+            return !soldInLast5Days;
+        }).map(p => {
+             const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
+             return { ...p, available };
+        }).sort((a, b) => b.available - a.available);
 
-        // PRIORIDAD #1: TALLER (Faltantes)
+        const stagnantCapital = coldProducts.reduce((acc, p) => acc + (p.available * p.costPrice), 0);
+
+        const inventoryData = products.map(p => {
+            const soldInPeriod = currentSales.reduce((acc, s) => {
+                const item = s.items.find(i => i.productId === p.id);
+                return acc + (item?.quantity || 0);
+            }, 0);
+            const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
+            const nominalRetailPrice = getFinalPrice(p);
+            const isProductPromo = !!(p.promoPrice && p.promoPrice > 0);
+            const realRetailPrice = isProductPromo ? (p.promoPrice || nominalRetailPrice) : (nominalRetailPrice * (bcvRate / parallelRate));
+            const margin = p.costPrice > 0 ? ((realRetailPrice - p.costPrice) / p.costPrice) * 100 : 0;
+            return { ...p, soldInPeriod, available, margin, realRetailPrice };
+        });
+
         const workshopMissing: { model: string, part: string, count: number, id: string }[] = [];
         if (showRepairs) {
             repairJobs.filter(j => j.status !== 'Completado').forEach(job => {
                 const parts = job.reservedParts || [];
-                parts.forEach(part => {
-                    const pData = products.find(prod => prod.id === part.productId);
+                parts.forEach(pItem => {
+                    const pData = products.find(prod => prod.id === pItem.productId);
                     const available = pData ? (pData.stockLevel - (pData.reservedStock || 0) - (pData.damagedStock || 0)) : 0;
                     if (available < 0) {
-                        workshopMissing.push({
-                            model: `${job.deviceMake} ${job.deviceModel}`,
-                            part: part.productName,
-                            count: Math.abs(available),
-                            id: part.productId
-                        });
+                        workshopMissing.push({ model: `${job.deviceMake} ${job.deviceModel}`, part: pItem.productName, count: Math.abs(available), id: pItem.productId });
                     }
                 });
             });
         }
 
-        // PRIORIDAD #2: STOCK ALTO RITMO
-        const highVelocityShortage = inventoryHealth
-            .filter(p => p.velocity > 0 && (p.available <= (p.lowStockThreshold || 1)))
-            .sort((a, b) => b.velocity - a.velocity)
-            .slice(0, 3);
-
-        const stagnantCapital = inventoryHealth
-            .filter(p => p.status === 'DORMANT')
-            .reduce((acc, p) => acc + (p.available * p.costPrice), 0);
-
-        const healthScore = products.length > 0 
-            ? ((inventoryHealth.filter(p => p.status !== 'DORMANT' && p.status !== 'CRITICAL').length / inventoryHealth.length) * 100)
-            : 0;
-
-        const dormantCategories = Array.from(new Set(inventoryHealth.filter(p => p.status === 'DORMANT').map(p => p.category)));
+        const healthScore = products.length > 0 ? ((inventoryData.filter(p => p.soldInPeriod > 0).length / inventoryData.length) * 100) : 0;
 
         return { 
             currentProfit, 
             healthScore,
             stagnantCapital,
-            inventoryHealth, 
-            workshopMissing: workshopMissing.slice(0, 2),
-            highVelocityShortage,
-            dormantCategories: dormantCategories.slice(0, 3)
+            starProducts: inventoryData.filter(p => p.soldInPeriod > 3).sort((a, b) => b.soldInPeriod - a.soldInPeriod),
+            coldProducts,
+            workshopMissing: workshopMissing.slice(0, 2)
         };
-    }, [sales, products, repairJobs, isLoading, dateRange, getFinalPrice, bcvRate, parallelRate, showRepairs]);
+    }, [sales, products, repairJobs, itemsLoading, dateRange, getFinalPrice, bcvRate, parallelRate, showRepairs, aggregatedStats]);
 
-    const paginatedItems = useMemo(() => {
+    const paginatedStars = useMemo(() => {
         if (!stats) return [];
-        const start = (currentPage - 1) * ITEMS_PER_PAGE;
-        return stats.inventoryHealth.slice(start, start + ITEMS_PER_PAGE);
-    }, [stats, currentPage]);
+        const start = (starPage - 1) * ITEMS_PER_PAGE;
+        return stats.starProducts.slice(start, start + ITEMS_PER_PAGE);
+    }, [stats, starPage]);
 
-    const totalPages = stats ? Math.ceil(stats.inventoryHealth.length / ITEMS_PER_PAGE) : 0;
+    const paginatedCold = useMemo(() => {
+        if (!stats) return [];
+        const start = (coldPage - 1) * ITEMS_PER_PAGE;
+        return stats.coldProducts.slice(start, start + ITEMS_PER_PAGE);
+    }, [stats, coldPage]);
 
-    if (isLoading) return <div className="p-10 space-y-4"><Skeleton className="h-20 w-full" /><Skeleton className="h-64 w-full" /></div>;
+    if (itemsLoading || statsLoading) return <div className="p-10 space-y-4"><Skeleton className="h-20 w-full" /><Skeleton className="h-64 w-full" /></div>;
     if (!stats) return null;
 
-    const efficiencyDiag = stats.healthScore > 80 ? "Sólida Rotación" : stats.healthScore > 50 ? "Riesgo de Estancamiento" : "Crítica Descapitalización";
-
     return (
-        <div className="space-y-6 max-w-5xl mx-auto w-full pb-20">
+        <div className="space-y-8 max-w-6xl mx-auto w-full pb-20">
             <div className="flex justify-between items-center bg-slate-900 text-white p-4 rounded-xl shadow-lg border-b-4 border-primary">
                 <div className="flex items-center gap-3">
                     <Target className="w-6 h-6 text-primary" />
@@ -220,13 +198,13 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="7d">Últimos 7 días</SelectItem>
-                        <SelectItem value="30d">Últimos 30 días</SelectItem>
+                        <SelectItem value="30d">Últimos 30 días (Optimizado)</SelectItem>
                         <SelectItem value="this_month">Mes actual</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card className="border-2 border-primary/20 bg-primary/5">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
@@ -240,14 +218,10 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                         </div>
                         <div className="pt-2 border-t border-primary/10">
                             <div className="flex justify-between items-center mb-1">
-                                <span className="text-[9px] font-bold text-muted-foreground uppercase">Eficiencia:</span>
-                                <span className="text-[10px] font-black text-primary">{stats.healthScore.toFixed(0)}%</span>
+                                <span className="text-[9px] font-bold text-muted-foreground uppercase">Salud de Catálogo:</span>
+                                <span className="text-[10px] font-black text-primary">{stats.healthScore.toFixed(0)}% Movimiento</span>
                             </div>
-                            <p className="text-[10px] font-black uppercase text-slate-600">{efficiencyDiag}</p>
-                        </div>
-                        <div className="pt-2 border-t border-primary/10">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase">Capital Estancado (&gt;15 días):</p>
-                            <p className="text-lg font-black text-destructive">${formatCurrency(stats.stagnantCapital)}</p>
+                            <Progress value={stats.healthScore} className="h-1.5" />
                         </div>
                     </CardContent>
                 </Card>
@@ -255,146 +229,187 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                 <Card className="border-2 border-amber-200 bg-amber-50 md:col-span-2">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-[10px] font-black uppercase text-amber-700 tracking-widest flex items-center gap-2">
-                            <ShieldAlert className="w-3.5 h-3.5" /> 🚨 Acciones Críticas (Máx. 4)
+                            <ShieldAlert className="w-3.5 h-3.5" /> 🚨 Faltantes Críticos (Taller)
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                        {stats.workshopMissing.length === 0 && stats.highVelocityShortage.length === 0 && (
-                            <div className="h-24 flex items-center justify-center text-xs font-bold text-amber-600/50 uppercase italic">Sin alertas críticas pendientes</div>
+                        {stats.workshopMissing.length === 0 ? (
+                            <div className="h-20 flex items-center justify-center text-xs font-bold text-amber-600/50 uppercase italic border-2 border-dashed border-amber-200 rounded-lg">
+                                Sin piezas faltantes para reparaciones en curso
+                            </div>
+                        ) : (
+                            stats.workshopMissing.map((m, i) => (
+                                <div key={`wm-${i}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-amber-300 shadow-sm animate-pulse">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-1.5 bg-amber-100 rounded text-amber-700"><Flame className="w-4 h-4"/></div>
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-amber-800">FALTANTE PARA {m.model}</p>
+                                            <p className="text-xs font-bold">{m.count}un. de {m.part}</p>
+                                        </div>
+                                    </div>
+                                    <Badge variant="destructive" className="animate-bounce">URGENTE</Badge>
+                                </div>
+                            ))
                         )}
-                        
-                        {stats.workshopMissing.map((m, i) => (
-                            <div key={`wm-${i}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-amber-300 shadow-sm animate-pulse">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-amber-100 rounded text-amber-700"><Layers className="w-4 h-4"/></div>
-                                    <div>
-                                        <p className="text-[10px] font-black uppercase text-amber-800">[TALLER] Pieza faltante para {m.model}</p>
-                                        <p className="text-xs font-bold">Comprar {m.count}un. de {m.part}</p>
-                                    </div>
-                                </div>
-                                <Button size="sm" variant="ghost" className="h-8 text-amber-700 hover:bg-amber-100" onClick={() => setReplenishProduct(products.find(p => p.id === m.id) || null)}>
-                                    <ArrowUpRight className="w-4 h-4" />
-                                </Button>
-                            </div>
-                        ))}
-
-                        {stats.highVelocityShortage.map((p, i) => (
-                            <div key={`hv-${i}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-primary/20 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-primary/10 rounded text-primary"><Zap className="w-4 h-4 fill-primary"/></div>
-                                    <div>
-                                        <p className="text-[10px] font-black uppercase text-slate-500">[STOCK ALTO RITMO] Reponer {p.name}</p>
-                                        <p className="text-xs font-bold">Ritmo: {p.soldInPeriod}un/mes | Margen: {p.margin.toFixed(0)}%</p>
-                                    </div>
-                                </div>
-                                <Button size="sm" variant="ghost" className="h-8 text-primary hover:bg-primary/10" onClick={() => setReplenishProduct(p as Product)}>
-                                    <ShoppingCart className="w-4 h-4" />
-                                </Button>
-                            </div>
-                        ))}
                     </CardContent>
                 </Card>
             </div>
 
-            <Card className="border-2 border-blue-100 bg-blue-50/30">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-[10px] font-black uppercase text-blue-700 tracking-widest flex items-center gap-2">
-                        <Lightbulb className="w-3.5 h-3.5" /> 💡 Estrategia de Liquidez
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="flex items-center justify-between">
-                    <div className="space-y-1">
-                        <p className="text-xs font-bold text-blue-900 uppercase">
-                            Liquidar {stats.dormantCategories.length > 0 ? stats.dormantCategories.join(", ") : "mercancía lenta"}
-                        </p>
-                        <p className="text-[10px] font-medium text-blue-700 uppercase tracking-tighter">
-                            0 ventas en los últimos 30 días. Sugerencia: Pack de accesorios o promoción rápida en divisa.
-                        </p>
+            <Card className="border-2 border-green-200 bg-green-50/10 shadow-xl overflow-hidden rounded-2xl">
+                <CardHeader className="bg-green-600 text-white py-4 flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
+                            <Sparkles className="w-5 h-5 fill-white" /> Productos Estrella
+                        </CardTitle>
+                        <CardDescription className="text-green-100 text-[10px] font-bold uppercase">Los que más rotación y ganancia generan (+3 ventas)</CardDescription>
                     </div>
-                    <Badge className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 uppercase">Liberar ${formatCurrency(stats.stagnantCapital)}</Badge>
-                </CardContent>
-            </Card>
-
-            <Card className="shadow-xl border-none overflow-hidden rounded-xl">
-                <CardHeader className="bg-slate-50 border-b py-4">
-                    <CardTitle className="text-xs font-black uppercase text-slate-500 tracking-widest">Matriz de Rendimiento Táctico (Pareto)</CardTitle>
+                    <Badge className="bg-white text-green-700 font-black px-4">{stats.starProducts.length} ÍTEMS</Badge>
                 </CardHeader>
                 <CardContent className="p-0 bg-white">
                     <Table>
                         <TableHeader>
-                            <TableRow className="bg-slate-50/50">
-                                <TableHead className="text-[10px] font-black uppercase py-4">Artículo Estratégico</TableHead>
+                            <TableRow className="bg-green-50/50 hover:bg-green-50/50">
+                                <TableHead className="text-[10px] font-black uppercase py-4">Artículo de Alto Flujo</TableHead>
                                 <TableHead className="text-center text-[10px] font-black uppercase">Ventas</TableHead>
-                                <TableHead className="text-center text-[10px] font-black uppercase">Rentabilidad Real</TableHead>
-                                <TableHead className="text-center text-[10px] font-black uppercase">Estatus Gemini</TableHead>
-                                <TableHead className="text-right text-[10px] font-black uppercase pr-6">Acción Recomendada</TableHead>
+                                <TableHead className="text-center text-[10px] font-black uppercase">Rentabilidad</TableHead>
+                                <TableHead className="text-right text-[10px] font-black uppercase pr-6">Estrategia Sugerida</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {paginatedItems.map(p => (
-                                <TableRow key={p.id} className="group hover:bg-slate-50/80 transition-colors">
-                                    <TableCell className="py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center font-black text-[10px] text-muted-foreground uppercase">{p.category.slice(0,2)}</div>
-                                            <div>
-                                                <p className="font-black text-xs uppercase text-slate-800">{p.name}</p>
-                                                <p className="text-[8px] text-muted-foreground font-mono uppercase">DISP: {p.available} {p.unit}</p>
+                            {paginatedStars.length === 0 ? (
+                                <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground font-bold uppercase italic">Aún no hay estrellas este mes.</TableCell></TableRow>
+                            ) : (
+                                paginatedStars.map(p => (
+                                    <TableRow key={p.id} className="group hover:bg-green-50 transition-colors">
+                                        <TableCell className="py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-black text-xs uppercase shadow-inner border-2 border-white">{p.category.slice(0,2)}</div>
+                                                <div>
+                                                    <p className="font-black text-xs uppercase text-slate-800">{p.name}</p>
+                                                    <p className="text-[8px] text-muted-foreground font-mono uppercase tracking-widest">STOCK: {p.available} {p.unit}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-center font-black text-sm">{p.soldInPeriod}</TableCell>
-                                    <TableCell className="text-center">
-                                        <Badge variant="outline" className={cn(
-                                            "font-mono text-[10px] border-none px-2",
-                                            p.margin < 15 ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
-                                        )}>{p.margin.toFixed(0)}%</Badge>
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        {p.status === 'STAR' && <Badge className="bg-yellow-400 text-slate-900 text-[8px] font-black uppercase">ESTRELLA</Badge>}
-                                        {p.status === 'TRACTION' && <Badge className="bg-blue-600 text-white text-[8px] font-black uppercase">TRACCIÓN</Badge>}
-                                        {p.status === 'DORMANT' && <Badge variant="outline" className="text-slate-500 border-slate-300 text-[8px] font-black uppercase">DORMIDO</Badge>}
-                                        {p.status === 'CRITICAL' && <Badge variant="destructive" className="text-[8px] font-black uppercase animate-pulse">CRÍTICO</Badge>}
-                                    </TableCell>
-                                    <TableCell className="text-right pr-6">
-                                        <span className="text-[9px] font-black text-slate-700 uppercase tracking-tighter">
-                                            {p.status === 'STAR' && 'No permitir quiebre de stock'}
-                                            {p.status === 'TRACTION' && 'Evaluar ajuste de margen +5%'}
-                                            {p.status === 'DORMANT' && 'Liquidar / Promoción en divisa'}
-                                            {p.status === 'CRITICAL' && 'Ajuste manual de inventario'}
-                                            {p.status === 'STABLE' && 'Mantener flujo actual'}
-                                        </span>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <div className="inline-flex flex-col items-center">
+                                                <span className="font-black text-xl text-green-700">{p.soldInPeriod}</span>
+                                                <span className="text-[8px] font-bold text-green-600 uppercase">Salidas</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <Badge className="bg-green-100 text-green-700 font-mono text-xs border-green-200">+{p.margin.toFixed(0)}%</Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right pr-6">
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-[10px] font-black text-green-700 uppercase">PROTEGER STOCK</span>
+                                                <span className="text-[8px] font-bold text-muted-foreground uppercase">Evaluando compra en lote</span>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
                         </TableBody>
                     </Table>
                     
-                    <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-t">
-                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">
-                            Mostrando {paginatedItems.length} de {stats.inventoryHealth.length} activos estratégicos
-                        </p>
-                        <div className="flex items-center gap-4">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">PÁG. {currentPage} / {totalPages}</span>
-                            <div className="flex gap-1">
-                                <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
-                                    <ChevronLeft className="w-4 h-4" />
-                                </Button>
-                                <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
-                                    <ChevronRight className="w-4 h-4" />
-                                </Button>
-                            </div>
+                    <div className="flex items-center justify-between px-6 py-4 bg-green-50/30 border-t">
+                        <p className="text-[9px] font-black uppercase text-green-700/60 tracking-widest">PÁGINA {starPage} / {Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE) || 1}</p>
+                        <div className="flex gap-1">
+                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setStarPage(p => Math.max(1, p - 1))} disabled={starPage === 1}><ChevronLeft className="w-4 h-4" /></Button>
+                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setStarPage(p => Math.min(Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE), p + 1))} disabled={starPage >= Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE)}><ChevronRight className="w-4 h-4" /></Button>
                         </div>
                     </div>
                 </CardContent>
             </Card>
 
-            {replenishProduct && (
-                <ReplenishStockDialog
-                    product={replenishProduct}
-                    isOpen={!!replenishProduct}
-                    onOpenChange={(open) => !open && setReplenishProduct(null)}
-                />
-            )}
+            <Card className="border-2 border-red-200 bg-red-50/10 shadow-xl overflow-hidden rounded-2xl">
+                <CardHeader className="bg-red-600 text-white py-4 flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
+                            <Snowflake className="w-5 h-5 fill-white" /> Mercancía Fría
+                        </CardTitle>
+                        <CardDescription className="text-red-100 text-[10px] font-bold uppercase">Productos sin ventas en los últimos 5 días</CardDescription>
+                    </div>
+                    <div className="flex flex-col items-end">
+                        <Badge className="bg-white text-red-700 font-black px-4">${formatCurrency(stats.stagnantCapital)} EN PAUSA</Badge>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-0 bg-white">
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-red-50/50 hover:bg-red-50/50">
+                                <TableHead className="text-[10px] font-black uppercase py-4">Artículo Estancado</TableHead>
+                                <TableHead className="text-center text-[10px] font-black uppercase">Stock Físico</TableHead>
+                                <TableHead className="text-center text-[10px] font-black uppercase">Costo Total ($)</TableHead>
+                                <TableHead className="text-right text-[10px] font-black uppercase pr-6">Acción de Rescate</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {paginatedCold.length === 0 ? (
+                                <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground font-bold uppercase italic">¡Felicidades! Todo tu inventario se mueve.</TableCell></TableRow>
+                            ) : (
+                                paginatedCold.map(p => (
+                                    <TableRow key={p.id} className="group hover:bg-red-50 transition-colors">
+                                        <TableCell className="py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded bg-red-100 text-red-600 flex items-center justify-center font-black text-xs uppercase border shadow-sm">{p.category.slice(0,2)}</div>
+                                                <div>
+                                                    <p className="font-black text-xs uppercase text-slate-800">{p.name}</p>
+                                                    <p className="text-[8px] text-muted-foreground font-bold uppercase">CATEGORÍA: {p.category}</p>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <span className="font-black text-lg text-slate-600">{p.available}</span>
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <span className="font-black text-xs text-red-600">${formatCurrency(p.available * p.costPrice)}</span>
+                                        </TableCell>
+                                        <TableCell className="text-right pr-6">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[10px] font-black text-red-700 uppercase">LIQUIDAR / PROMO</span>
+                                                    <span className="text-[8px] font-bold text-muted-foreground uppercase">Combo en divisas</span>
+                                                </div>
+                                                <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-100 h-8 w-8"><Trash2 className="w-4 h-4"/></Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                    
+                    <div className="flex items-center justify-between px-6 py-4 bg-red-50/30 border-t">
+                        <p className="text-[9px] font-black uppercase text-red-700/60 tracking-widest">PÁGINA {coldPage} / {Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE) || 1}</p>
+                        <div className="flex gap-1">
+                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setColdPage(p => Math.max(1, p - 1))} disabled={coldPage === 1}><ChevronLeft className="w-4 h-4" /></Button>
+                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setColdPage(p => Math.min(Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE), p + 1))} disabled={coldPage >= Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE)}><ChevronRight className="w-4 h-4" /></Button>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card className="border-2 border-blue-100 bg-blue-50/30">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-[10px] font-black uppercase text-blue-700 tracking-widest flex items-center gap-2">
+                        <Lightbulb className="w-3.5 h-3.5" /> 💡 Estrategia de Liquidez Recomendada
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-between">
+                    <div className="space-y-1">
+                        <p className="text-xs font-bold text-blue-900 uppercase">
+                            Liberar capital de la mercancía estancada
+                        </p>
+                        <p className="text-[10px] font-medium text-blue-700 uppercase tracking-tighter">
+                            Sugerencia: Arma packs de accesorios o aplica "Tasa de Oferta" a los {stats.coldProducts.length} artículos fríos.
+                        </p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-[8px] font-black text-blue-400 uppercase">Valor de Rescate:</p>
+                        <p className="text-xl font-black text-blue-700">${formatCurrency(stats.stagnantCapital)}</p>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }

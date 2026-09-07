@@ -37,9 +37,6 @@ function POSContent() {
     );
     const { data: heldSales } = useCollection<HeldSale>(heldSalesCollection);
 
-    // Se ha eliminado la persistencia en localStorage para asegurar que el carrito 
-    // inicie siempre vacío en cada nueva carga de la página.
-
     useEffect(() => {
         if (!user || isUserLoading) return;
 
@@ -114,11 +111,16 @@ function POSContent() {
             }
 
             if (existing) return prev.map(i => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i);
+            
+            // Aplicar automáticamente el descuento si el producto lo tiene definido
+            const discountToApply = product.hasDiscount ? (product.discountAmount || 0) : 0;
+            
             return [...prev, { 
                 productId: product.id!, 
                 name: product.name, 
                 quantity: 1,
-                isPromo: !!(product.promoPrice && product.promoPrice > 0)
+                isPromo: !!(product.promoPrice && product.promoPrice > 0),
+                discount: discountToApply
             }];
         });
     };

@@ -34,6 +34,7 @@ import { doc, runTransaction, query, orderBy, collection, type DocumentSnapshot 
 import { handlePrintAllTickets } from "./repair-ticket";
 import { User, Smartphone, Package, Search, Plus, Trash2, Loader2, DollarSign, Calculator, UserCheck, MapPin, Hammer, Minus, TicketPercent, CheckCircle2 } from "lucide-react";
 import { format, addDays } from "date-fns";
+import { es } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { cn } from "@/lib/utils";
@@ -268,7 +269,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
             const jobId = repairJob?.id || `R-${format(new Date(), "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
             const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', jobId);
 
-            // 1. GATHER ALL NEEDED DATA (READS FIRST)
             const allFormParts = values.reservedParts;
             const newReservedItems = allFormParts.filter(p => !p.isConsumed);
             const newConsumedItems = allFormParts.filter(p => p.isConsumed);
@@ -278,24 +278,20 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
             const newInventoryReserved = newReservedItems.filter(p => !p.isManual);
             const newInventoryConsumed = newConsumedItems.filter(p => !p.isManual);
 
-            // Collect all unique product IDs for inventory management
             const productIdsToRead = new Set<string>();
             oldInventoryReserved.forEach(p => productIdsToRead.add(p.productId));
             oldInventoryConsumed.forEach(p => productIdsToRead.add(p.productId));
             newInventoryReserved.forEach(p => productIdsToRead.add(p.productId));
             newInventoryConsumed.forEach(p => productIdsToRead.add(p.productId));
 
-            // READ all required products at once
             const productSnapshots = new Map<string, DocumentSnapshot>();
             for (const pid of Array.from(productIdsToRead)) {
                 const pSnap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
                 productSnapshots.set(pid, pSnap);
             }
 
-            // Also read the job itself if we are editing
             if (repairJob) await transaction.get(jobRef);
 
-            // 2. CALCULATE AND APPLY WRITES
             const reservedDeltas = new Map<string, { delta: number, name: string }>();
             for (const old of oldInventoryReserved) {
                 const current = reservedDeltas.get(old.productId) || { delta: 0, name: old.productName };
@@ -315,7 +311,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 }
             }
 
-            // Apply calculated deltas
             for (const [pid, change] of Array.from(reservedDeltas.entries())) {
                 if (change.delta === 0) continue;
                 const pSnap = productSnapshots.get(pid);
@@ -639,7 +634,11 @@ function ManualQuickAddDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md p-4 sm:p-6">
+            <DialogContent 
+                className="sm:max-w-md p-4 sm:p-6"
+                onPointerDownOutside={(e) => e.preventDefault()}
+                onEscapeKeyDown={(e) => e.preventDefault()}
+            >
                 <DialogHeader><DialogTitle className="uppercase font-bold text-base sm:text-lg">Repuesto Manual</DialogTitle></DialogHeader>
                 <div className="space-y-4 py-4">
                     <div className="space-y-1.5">

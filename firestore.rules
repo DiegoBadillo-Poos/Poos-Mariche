@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -22,9 +23,9 @@ service cloud.firestore {
     }
 
     /**
-     * Anuncios del Sistema
+     * Anuncios del Sistema y Métricas
      */
-    match /system/announcements {
+    match /system/{allData=**} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
@@ -35,7 +36,9 @@ service cloud.firestore {
      */
     match /users/{userId} {
       // Permitimos lectura y escritura al dueño del negocio o al administrador global
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // El administrador global tiene permiso de lectura a todos los perfiles para monitorear actividad
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
 
       /**
        * Subcolecciones (sale_transactions, products, repair_jobs, workers, etc.)

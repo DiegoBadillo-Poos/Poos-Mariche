@@ -1,13 +1,13 @@
 "use client";
 
-import React, { Suspense, useState, useMemo } from 'react';
+import React, { Suspense, useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 import { PlusCircle, Trash2, Calculator, Clock } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { columns } from "@/components/inventory/columns";
 import type { Product, UserProfile } from '@/lib/types';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, writeBatch, doc } from 'firebase/firestore';
 import type { Table as TanstackTable, FilterFn } from '@tanstack/react-table';
@@ -30,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { differenceInDays, parseISO } from 'date-fns';
 import { cn } from "@/lib/utils";
 import { SecurityGate } from "@/components/security-gate";
+import { useDebounce } from "use-debounce";
 
 const productFilterFn: FilterFn<Product> = (row, columnId, value) => {
     const term = String(value).toLowerCase();
