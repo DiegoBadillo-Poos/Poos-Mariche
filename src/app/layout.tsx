@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { FirebaseClientProvider, useFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { AuthView } from '@/components/auth-view';
 import { useEffect, useRef, useState } from 'react';
-import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
@@ -13,19 +13,18 @@ import { Loader2 } from 'lucide-react';
 import { SWRConfig } from 'swr';
 import './globals.css';
 
+/**
+ * AppContent ha sido refactorizada para eliminar el onSnapshot pasivo.
+ * Ahora solo verifica la sesión una vez al cargar para ahorrar lecturas.
+ */
 function AppContent({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading, firestore, auth } = useFirebase();
   const [isInitializing, setIsInitializing] = useState(true);
   const [isKickingOut, setIsKickingOut] = useState(false);
   const currentSessionId = useRef<string | null>(null);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!user || !firestore || !auth) {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
       setIsInitializing(false);
       return;
     }
@@ -53,16 +52,14 @@ function AppContent({ children }: { children: React.ReactNode }) {
         const profileSnap = await getDoc(profileRef);
         const existingData = profileSnap.exists() ? profileSnap.data() : {};
 
-        // Lista de módulos del núcleo
-        const allAvailableModules = [
-            'inventory', 
-            'pos', 
-            'repairs', 
-            'reports', 
-            'expenses',
-            'analysis',
-            'fiados'
-        ];
+        // Validar sesión única de forma estática (sin listener)
+        if (existingData.lastSessionId && existingData.lastSessionId !== sessionId) {
+           // Si ya hay otra sesión activa registrada, desconectamos la actual
+           handleAutoSignOut();
+           return;
+        }
+
+        const allAvailableModules = ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis', 'fiados'];
 
         const profileData = {
           uid: user.uid,
@@ -88,23 +85,8 @@ function AppContent({ children }: { children: React.ReactNode }) {
         };
 
         await setDoc(profileRef, profileData, { merge: true });
-
-        unsubscribeRef.current = onSnapshot(profileRef, (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data.lastSessionId && data.lastSessionId !== sessionId) {
-              handleAutoSignOut();
-            }
-          }
-        }, (err) => {
-          if (err.code !== 'permission-denied') {
-            console.error("Session Watcher Error:", err);
-          }
-        });
-
         setIsInitializing(false);
       } catch (serverError: any) {
-        console.error("Session sync failed:", serverError);
         if (user) {
             const permissionError = new FirestorePermissionError({
                 path: `users/${user.uid}`,
@@ -118,10 +100,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
     const handleAutoSignOut = async () => {
       setIsKickingOut(true);
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
       try {
         sessionStorage.removeItem('mm_active_session_id');
         await signOut(auth);
@@ -133,14 +111,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
     syncProfileAndSession();
 
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-    };
   }, [user, firestore, auth]);
 
+  // Update pulsante de actividad (una sola escritura cada 2 minutos)
   useEffect(() => {
     if (!user || !firestore || isInitializing) return;
 
@@ -210,7 +183,11 @@ export default function RootLayout({
             revalidateOnFocus: false,
             revalidateOnReconnect: false,
             revalidateIfStale: false,
+<<<<<<< HEAD
+            dedupingInterval: 600000,
+=======
             dedupingInterval: 600000, // 10 minutos de caché para evitar lecturas duplicadas
+>>>>>>> ec016efa281ea5051cb33f97c915eb58b7560282
           }}
         >
           <FirebaseClientProvider>
