@@ -8,7 +8,7 @@ import { PlusCircle, CalendarIcon, X as ClearIcon, Clock, DollarSign, LayoutGrid
 import { DataTable } from "@/components/data-table";
 import { columns } from "@/components/repairs/columns";
 import { useCollection, useFirebase, useMemoFirebase } from "@/firebase";
-import { collection, query, orderBy } from "firebase/firestore";
+import { collection, query, orderBy, limit } from "firebase/firestore";
 import type { RepairJob } from "@/lib/types";
 import { format, isWithinInterval, startOfDay, endOfDay, isAfter, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -49,9 +49,10 @@ function RepairsContent() {
     const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
+    // OPTIMIZACIÓN: Añadido limit(20) para evitar descarga de todo el historial de reparaciones y ahorrar cuota
     const repairJobsQuery = useMemoFirebase(() =>
         (firestore && user) 
-            ? query(collection(firestore, 'users', user.uid, 'repair_jobs'), orderBy('createdAt', 'desc')) 
+            ? query(collection(firestore, 'users', user.uid, 'repair_jobs'), orderBy('createdAt', 'desc'), limit(20)) 
             : null,
         [firestore, user?.uid]
     );

@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/page-header";
 import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, setDocumentNonBlocking, useDoc, deleteDocumentNonBlocking, sendResetEmail } from "@/firebase";
-import { collection, doc, query, where } from "firebase/firestore";
+import { collection, doc, query, limit, orderBy } from "firebase/firestore";
 import type { UserProfile, UserModule } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -311,7 +311,7 @@ function AdminContent() {
     const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
 
     const usersCollection = useMemoFirebase(() => 
-        (firestore) ? collection(firestore, "users") : null, 
+        (firestore) ? query(collection(firestore, "users"), limit(20)) : null, 
         [firestore]
     );
     const { data: users, isLoading } = useCollection<UserProfile>(usersCollection);
@@ -363,7 +363,13 @@ function AdminContent() {
         return [...users].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
     }, [users]);
 
-    if (isLoading) return <div className="p-20 text-center"><Loader2 className="w-12 h-12 animate-spin mx-auto text-primary opacity-20" /></div>;
+    if (isLoading) {
+        return (
+            <div className="p-20 text-center">
+                <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary opacity-20" />
+            </div>
+        );
+    }
 
     return (
         <>
@@ -372,12 +378,24 @@ function AdminContent() {
                 
                 <div className="grid gap-6 md:grid-cols-2">
                     <Card className="shadow-sm border-primary/10">
-                        <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-muted-foreground flex items-center gap-1.5"><Globe className="w-3 h-3"/> Total Negocios Registrados</CardTitle></CardHeader>
-                        <CardContent><div className="text-3xl font-black text-slate-800">{users?.length || 0}</div></CardContent>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-[10px] uppercase font-black text-muted-foreground flex items-center gap-1.5">
+                                <Globe className="w-3 h-3"/> Total Negocios Registrados
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-black text-slate-800">{users?.length || 0}</div>
+                        </CardContent>
                     </Card>
                     <Card className="shadow-sm border-green-200">
-                        <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-green-600 flex items-center gap-1.5"><Activity className="w-3 h-3"/> Negocios en Línea</CardTitle></CardHeader>
-                        <CardContent><div className="text-3xl font-black text-green-600">{activeUsers}</div></CardContent>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-[10px] uppercase font-black text-green-600 flex items-center gap-1.5">
+                                <Activity className="w-3 h-3"/> Negocios en Línea
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-black text-green-600">{activeUsers}</div>
+                        </CardContent>
                     </Card>
                 </div>
 
@@ -438,7 +456,9 @@ function AdminContent() {
                                                             >
                                                                 Gestionar
                                                             </Button>
-                                                            <Button variant="ghost" size="sm" className="h-7 w-7 text-destructive" onClick={() => setUserToDelete(u)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                                                            <Button variant="ghost" size="sm" className="h-7 w-7 text-destructive" onClick={() => setUserToDelete(u)}>
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </Button>
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>

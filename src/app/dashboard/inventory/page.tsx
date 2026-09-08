@@ -9,7 +9,7 @@ import { columns } from "@/components/inventory/columns";
 import type { Product, UserProfile } from '@/lib/types';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, writeBatch, doc } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, limit, orderBy } from 'firebase/firestore';
 import type { Table as TanstackTable, FilterFn } from '@tanstack/react-table';
 import {
   AlertDialog,
@@ -107,8 +107,9 @@ function InventoryContent() {
     );
     const { data: profile } = useDoc<UserProfile>(profileRef);
     
+    // OPTIMIZACIÓN: Añadido limit(20) para evitar descarga masiva de documentos y ahorrar lecturas
     const productsCollection = useMemoFirebase(() =>
-        (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null,
+        (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(20)) : null,
         [firestore, user?.uid]
     );
     const { data: products, isLoading } = useCollection<Product>(productsCollection);

@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useRouter } from "next/navigation";
 import { useCollection, useFirebase, useMemoFirebase, deleteDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase";
-import { collection, doc } from "firebase/firestore";
+import { collection, doc, query, limit, orderBy } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Calculator } from "lucide-react";
 import { HeldSalesSheet } from "@/components/pos/held-sales-sheet";
@@ -25,8 +25,9 @@ function POSContent() {
     const [cart, setCart] = useState<CartItem[]>([]);
     const [activeRepairJob, setActiveRepairJob] = useState<RepairJob | null>(null);
 
+    // OPTIMIZACIÓN: Añadido limit(20) para cargar lo necesario para el grid del POS sin saturar lecturas
     const productsCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null,
+        (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(20)) : null,
         [firestore, user?.uid]
     );
     const { data: products, isLoading: productsLoading } = useCollection<Product>(productsCollection);
