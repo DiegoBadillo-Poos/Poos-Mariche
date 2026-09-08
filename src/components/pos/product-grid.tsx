@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Product } from "@/lib/types";
@@ -20,7 +21,7 @@ type ProductGridProps = {
   isLoading?: boolean;
 };
 
-const ITEMS_PER_PAGE = 25;
+const ITEMS_PER_PAGE = 20;
 
 export function ProductGrid({ products, onProductSelect, isLoading }: ProductGridProps) {
   const [searchTerm, setSearchTerm] = useState("");

@@ -52,7 +52,10 @@ export function DataTable<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [rowSelection, setRowSelection] = React.useState({})
   const [globalFilter, setGlobalFilter] = React.useState('')
-
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: 20,
+  })
 
   const table = useReactTable({
     data,
@@ -63,6 +66,7 @@ export function DataTable<TData, TValue>({
     getSortedRowModel: getSortedRowModel(),
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
+    onPaginationChange: setPagination,
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
     globalFilterFn: globalFilterFn,
@@ -71,8 +75,9 @@ export function DataTable<TData, TValue>({
       columnFilters,
       globalFilter,
       rowSelection,
+      pagination,
     },
-    meta: meta // Pass meta to table instance
+    meta: meta
   })
 
   const columnCount = table.getAllColumns().length;
@@ -137,8 +142,8 @@ export function DataTable<TData, TValue>({
                 ))
             ) : (
                 <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No se encontraron resultados para "{globalFilter}".
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground italic">
+                    No se encontraron resultados para esta búsqueda.
                 </TableCell>
                 </TableRow>
             )}
@@ -146,8 +151,8 @@ export function DataTable<TData, TValue>({
         </ShadcnTable>
         </div>
         <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-                {table.getFilteredSelectedRowModel().rows.length} de {table.getFilteredRowModel().rows.length} fila(s) seleccionadas.
+            <div className="text-[10px] font-black uppercase text-muted-foreground">
+                Página {table.getState().pagination.pageIndex + 1} de {table.getPageCount()} ({table.getFilteredRowModel().rows.length} total)
             </div>
             <div className="flex items-center justify-end space-x-2 py-4">
                 <Button
@@ -155,6 +160,7 @@ export function DataTable<TData, TValue>({
                 size="sm"
                 onClick={() => table.previousPage()}
                 disabled={!table.getCanPreviousPage()}
+                className="h-8 text-xs font-bold"
                 >
                 Anterior
                 </Button>
@@ -163,6 +169,7 @@ export function DataTable<TData, TValue>({
                 size="sm"
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
+                className="h-8 text-xs font-bold"
                 >
                 Siguiente
                 </Button>

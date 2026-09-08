@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { format, parseISO, isAfter, subMinutes } from "date-fns";
 import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -63,28 +63,38 @@ function AnnouncementEditor() {
         firestore ? doc(firestore, 'system', 'announcements') : null, 
         [firestore]
     );
-    const { data: announcement } = useDoc<any>(announcementRef);
+    const { data: announcement, mutate } = useDoc<any>(announcementRef);
     const [message, setMessage] = useState("");
     const [type, setType] = useState("info");
     const [active, setActive] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
+    
+    // Bandera para asegurar que solo cargamos de la DB una vez al entrar
+    const hasLoaded = useRef(false);
 
     useEffect(() => {
-        if (announcement && !isDirty) {
+        if (announcement && !hasLoaded.current) {
             setMessage(announcement.message || "");
             setType(announcement.type || "info");
             setActive(announcement.active || false);
+            hasLoaded.current = true;
         }
-    }, [announcement, isDirty]);
+    }, [announcement]);
 
     const handleSave = () => {
         if (!announcementRef) return;
-        setDocumentNonBlocking(announcementRef, {
+        
+        const newData = {
             message,
             type,
             active,
             updatedAt: new Date().toISOString()
-        }, { merge: true });
+        };
+
+        // Mutación optimista local para evitar parpadeos
+        mutate(prev => prev ? { ...prev, ...newData } : (newData as any));
+        
+        setDocumentNonBlocking(announcementRef, newData, { merge: true });
         toast({ title: "Anuncio Actualizado" });
         setIsDirty(false);
     };

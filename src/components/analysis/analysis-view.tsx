@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Product, Sale, RepairJob, UserModule, BusinessStats } from "@/lib/types";
@@ -36,7 +37,7 @@ type AnalysisViewProps = {
     isAdmin?: boolean;
 };
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20;
 
 export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoading, enabledModules }: AnalysisViewProps) {
     const { firestore, user } = useFirebase();
@@ -109,20 +110,16 @@ export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoad
             }, 0);
         }
 
-        // CÁLCULO DE MERCANCÍA FRÍA (Sin ventas en los últimos 5 días)
         const fiveDaysAgo = subDays(now, 5);
         const coldProducts = products.filter(p => {
             const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
             if (available <= 0) return false;
-
-            // Verificar si el producto se ha vendido en los últimos 5 días
             const soldInLast5Days = sales.some(s => 
                 s.status === 'completed' && 
                 s.transactionDate && 
                 isAfter(parseISO(s.transactionDate), fiveDaysAgo) &&
                 s.items.some(i => i.productId === p.id)
             );
-
             return !soldInLast5Days;
         }).map(p => {
              const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
@@ -144,20 +141,6 @@ export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoad
             return { ...p, soldInPeriod, available, margin, realRetailPrice };
         });
 
-        const workshopMissing: { model: string, part: string, count: number, id: string }[] = [];
-        if (showRepairs) {
-            repairJobs.filter(j => j.status !== 'Completado').forEach(job => {
-                const parts = job.reservedParts || [];
-                parts.forEach(pItem => {
-                    const pData = products.find(prod => prod.id === pItem.productId);
-                    const available = pData ? (pData.stockLevel - (pData.reservedStock || 0) - (pData.damagedStock || 0)) : 0;
-                    if (available < 0) {
-                        workshopMissing.push({ model: `${job.deviceMake} ${job.deviceModel}`, part: pItem.productName, count: Math.abs(available), id: pItem.productId });
-                    }
-                });
-            });
-        }
-
         const healthScore = products.length > 0 ? ((inventoryData.filter(p => p.soldInPeriod > 0).length / inventoryData.length) * 100) : 0;
 
         return { 
@@ -166,7 +149,7 @@ export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoad
             stagnantCapital,
             starProducts: inventoryData.filter(p => p.soldInPeriod > 3).sort((a, b) => b.soldInPeriod - a.soldInPeriod),
             coldProducts,
-            workshopMissing: workshopMissing.slice(0, 2)
+            workshopMissing: []
         };
     }, [sales, products, repairJobs, itemsLoading, dateRange, getFinalPrice, bcvRate, parallelRate, showRepairs, aggregatedStats]);
 
@@ -198,61 +181,10 @@ export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoad
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="7d">Últimos 7 días</SelectItem>
-                        <SelectItem value="30d">Últimos 30 días (Optimizado)</SelectItem>
+                        <SelectItem value="30d">Últimos 30 días</SelectItem>
                         <SelectItem value="this_month">Mes actual</SelectItem>
                     </SelectContent>
                 </Select>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="border-2 border-primary/20 bg-primary/5">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                            <TrendingUp className="w-3.5 h-3.5" /> 📊 Finanzas Express
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div>
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase">Utilidad Real (Reposición):</p>
-                            <p className="text-2xl font-black text-slate-800">${formatCurrency(stats.currentProfit)}</p>
-                        </div>
-                        <div className="pt-2 border-t border-primary/10">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-[9px] font-bold text-muted-foreground uppercase">Salud de Catálogo:</span>
-                                <span className="text-[10px] font-black text-primary">{stats.healthScore.toFixed(0)}% Movimiento</span>
-                            </div>
-                            <Progress value={stats.healthScore} className="h-1.5" />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-2 border-amber-200 bg-amber-50 md:col-span-2">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-[10px] font-black uppercase text-amber-700 tracking-widest flex items-center gap-2">
-                            <ShieldAlert className="w-3.5 h-3.5" /> 🚨 Faltantes Críticos (Taller)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                        {stats.workshopMissing.length === 0 ? (
-                            <div className="h-20 flex items-center justify-center text-xs font-bold text-amber-600/50 uppercase italic border-2 border-dashed border-amber-200 rounded-lg">
-                                Sin piezas faltantes para reparaciones en curso
-                            </div>
-                        ) : (
-                            stats.workshopMissing.map((m, i) => (
-                                <div key={`wm-${i}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-amber-300 shadow-sm animate-pulse">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-1.5 bg-amber-100 rounded text-amber-700"><Flame className="w-4 h-4"/></div>
-                                        <div>
-                                            <p className="text-[10px] font-black uppercase text-amber-800">FALTANTE PARA {m.model}</p>
-                                            <p className="text-xs font-bold">{m.count}un. de {m.part}</p>
-                                        </div>
-                                    </div>
-                                    <Badge variant="destructive" className="animate-bounce">URGENTE</Badge>
-                                </div>
-                            ))
-                        )}
-                    </CardContent>
-                </Card>
             </div>
 
             <Card className="border-2 border-green-200 bg-green-50/10 shadow-xl overflow-hidden rounded-2xl">
@@ -261,7 +193,7 @@ export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoad
                         <CardTitle className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
                             <Sparkles className="w-5 h-5 fill-white" /> Productos Estrella
                         </CardTitle>
-                        <CardDescription className="text-green-100 text-[10px] font-bold uppercase">Los que más rotación y ganancia generan (+3 ventas)</CardDescription>
+                        <CardDescription className="text-green-100 text-[10px] font-bold uppercase">Los que más rotación y ganancia generan</CardDescription>
                     </div>
                     <Badge className="bg-white text-green-700 font-black px-4">{stats.starProducts.length} ÍTEMS</Badge>
                 </CardHeader>
@@ -272,52 +204,38 @@ export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoad
                                 <TableHead className="text-[10px] font-black uppercase py-4">Artículo de Alto Flujo</TableHead>
                                 <TableHead className="text-center text-[10px] font-black uppercase">Ventas</TableHead>
                                 <TableHead className="text-center text-[10px] font-black uppercase">Rentabilidad</TableHead>
-                                <TableHead className="text-right text-[10px] font-black uppercase pr-6">Estrategia Sugerida</TableHead>
+                                <TableHead className="text-right text-[10px] font-black uppercase pr-6">Acción</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {paginatedStars.length === 0 ? (
-                                <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground font-bold uppercase italic">Aún no hay estrellas este mes.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground font-bold uppercase italic">Sin estrellas detectadas.</TableCell></TableRow>
                             ) : (
                                 paginatedStars.map(p => (
                                     <TableRow key={p.id} className="group hover:bg-green-50 transition-colors">
                                         <TableCell className="py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-black text-xs uppercase shadow-inner border-2 border-white">{p.category.slice(0,2)}</div>
-                                                <div>
-                                                    <p className="font-black text-xs uppercase text-slate-800">{p.name}</p>
-                                                    <p className="text-[8px] text-muted-foreground font-mono uppercase tracking-widest">STOCK: {p.available} {p.unit}</p>
-                                                </div>
+                                                <div className="w-9 h-9 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-black text-xs uppercase border shadow-sm">{p.category.slice(0,2)}</div>
+                                                <div><p className="font-black text-xs uppercase text-slate-800">{p.name}</p><p className="text-[8px] text-muted-foreground font-mono">STOCK: {p.available}</p></div>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-center">
-                                            <div className="inline-flex flex-col items-center">
-                                                <span className="font-black text-xl text-green-700">{p.soldInPeriod}</span>
-                                                <span className="text-[8px] font-bold text-green-600 uppercase">Salidas</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            <Badge className="bg-green-100 text-green-700 font-mono text-xs border-green-200">+{p.margin.toFixed(0)}%</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right pr-6">
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-[10px] font-black text-green-700 uppercase">PROTEGER STOCK</span>
-                                                <span className="text-[8px] font-bold text-muted-foreground uppercase">Evaluando compra en lote</span>
-                                            </div>
-                                        </TableCell>
+                                        <TableCell className="text-center"><span className="font-black text-xl text-green-700">{p.soldInPeriod}</span></TableCell>
+                                        <TableCell className="text-center"><Badge className="bg-green-100 text-green-700 font-mono">+{p.margin.toFixed(0)}%</Badge></TableCell>
+                                        <TableCell className="text-right pr-6"><span className="text-[10px] font-black text-green-700 uppercase">PROTEGER STOCK</span></TableCell>
                                     </TableRow>
                                 ))
                             )}
                         </TableBody>
                     </Table>
-                    
-                    <div className="flex items-center justify-between px-6 py-4 bg-green-50/30 border-t">
-                        <p className="text-[9px] font-black uppercase text-green-700/60 tracking-widest">PÁGINA {starPage} / {Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE) || 1}</p>
-                        <div className="flex gap-1">
-                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setStarPage(p => Math.max(1, p - 1))} disabled={starPage === 1}><ChevronLeft className="w-4 h-4" /></Button>
-                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setStarPage(p => Math.min(Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE), p + 1))} disabled={starPage >= Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE)}><ChevronRight className="w-4 h-4" /></Button>
+                    {stats.starProducts.length > ITEMS_PER_PAGE && (
+                        <div className="flex items-center justify-between px-6 py-4 bg-green-50/30 border-t">
+                            <p className="text-[9px] font-black uppercase text-green-700/60">PÁGINA {starPage} / {Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE)}</p>
+                            <div className="flex gap-1">
+                                <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setStarPage(p => Math.max(1, p - 1))} disabled={starPage === 1}><ChevronLeft className="w-4 h-4" /></Button>
+                                <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setStarPage(p => Math.min(Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE), p + 1))} disabled={starPage >= Math.ceil(stats.starProducts.length / ITEMS_PER_PAGE)}><ChevronRight className="w-4 h-4" /></Button>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </CardContent>
             </Card>
 
@@ -327,87 +245,49 @@ export function AnalysisView({ sales, products, repairJobs, isLoading: itemsLoad
                         <CardTitle className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
                             <Snowflake className="w-5 h-5 fill-white" /> Mercancía Fría
                         </CardTitle>
-                        <CardDescription className="text-red-100 text-[10px] font-bold uppercase">Productos sin ventas en los últimos 5 días</CardDescription>
+                        <CardDescription className="text-red-100 text-[10px] font-bold uppercase">Sin ventas en los últimos 5 días</CardDescription>
                     </div>
-                    <div className="flex flex-col items-end">
-                        <Badge className="bg-white text-red-700 font-black px-4">${formatCurrency(stats.stagnantCapital)} EN PAUSA</Badge>
-                    </div>
+                    <Badge className="bg-white text-red-700 font-black px-4">${formatCurrency(stats.stagnantCapital)} EN PAUSA</Badge>
                 </CardHeader>
                 <CardContent className="p-0 bg-white">
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-red-50/50 hover:bg-red-50/50">
                                 <TableHead className="text-[10px] font-black uppercase py-4">Artículo Estancado</TableHead>
-                                <TableHead className="text-center text-[10px] font-black uppercase">Stock Físico</TableHead>
+                                <TableHead className="text-center text-[10px] font-black uppercase">Stock</TableHead>
                                 <TableHead className="text-center text-[10px] font-black uppercase">Costo Total ($)</TableHead>
-                                <TableHead className="text-right text-[10px] font-black uppercase pr-6">Acción de Rescate</TableHead>
+                                <TableHead className="text-right text-[10px] font-black uppercase pr-6">Acción</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {paginatedCold.length === 0 ? (
-                                <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground font-bold uppercase italic">¡Felicidades! Todo tu inventario se mueve.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground font-bold uppercase italic">Inventario en movimiento constante.</TableCell></TableRow>
                             ) : (
                                 paginatedCold.map(p => (
                                     <TableRow key={p.id} className="group hover:bg-red-50 transition-colors">
                                         <TableCell className="py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 rounded bg-red-100 text-red-600 flex items-center justify-center font-black text-xs uppercase border shadow-sm">{p.category.slice(0,2)}</div>
-                                                <div>
-                                                    <p className="font-black text-xs uppercase text-slate-800">{p.name}</p>
-                                                    <p className="text-[8px] text-muted-foreground font-bold uppercase">CATEGORÍA: {p.category}</p>
-                                                </div>
+                                                <div className="w-9 h-9 rounded bg-red-100 text-red-600 flex items-center justify-center font-black text-xs border shadow-sm">{p.category.slice(0,2)}</div>
+                                                <div><p className="font-black text-xs uppercase text-slate-800">{p.name}</p><p className="text-[8px] text-muted-foreground font-bold">{p.category}</p></div>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-center">
-                                            <span className="font-black text-lg text-slate-600">{p.available}</span>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            <span className="font-black text-xs text-red-600">${formatCurrency(p.available * p.costPrice)}</span>
-                                        </TableCell>
-                                        <TableCell className="text-right pr-6">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <div className="flex flex-col items-end">
-                                                    <span className="text-[10px] font-black text-red-700 uppercase">LIQUIDAR / PROMO</span>
-                                                    <span className="text-[8px] font-bold text-muted-foreground uppercase">Combo en divisas</span>
-                                                </div>
-                                                <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-100 h-8 w-8"><Trash2 className="w-4 h-4"/></Button>
-                                            </div>
-                                        </TableCell>
+                                        <TableCell className="text-center"><span className="font-black text-lg text-slate-600">{p.available}</span></TableCell>
+                                        <TableCell className="text-center"><span className="font-black text-xs text-red-600">${formatCurrency(p.available * p.costPrice)}</span></TableCell>
+                                        <TableCell className="text-right pr-6"><span className="text-[10px] font-black text-red-700 uppercase">LIQUIDAR / PROMO</span></TableCell>
                                     </TableRow>
                                 ))
                             )}
                         </TableBody>
                     </Table>
-                    
-                    <div className="flex items-center justify-between px-6 py-4 bg-red-50/30 border-t">
-                        <p className="text-[9px] font-black uppercase text-red-700/60 tracking-widest">PÁGINA {coldPage} / {Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE) || 1}</p>
-                        <div className="flex gap-1">
-                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setColdPage(p => Math.max(1, p - 1))} disabled={coldPage === 1}><ChevronLeft className="w-4 h-4" /></Button>
-                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setColdPage(p => Math.min(Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE), p + 1))} disabled={coldPage >= Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE)}><ChevronRight className="w-4 h-4" /></Button>
+                    {stats.coldProducts.length > ITEMS_PER_PAGE && (
+                        <div className="flex items-center justify-between px-6 py-4 bg-red-50/30 border-t">
+                            <p className="text-[9px] font-black uppercase text-red-700/60">PÁGINA {coldPage} / {Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE)}</p>
+                            <div className="flex gap-1">
+                                <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setColdPage(p => Math.max(1, p - 1))} disabled={coldPage === 1}><ChevronLeft className="w-4 h-4" /></Button>
+                                <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setColdPage(p => Math.min(Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE), p + 1))} disabled={coldPage >= Math.ceil(stats.coldProducts.length / ITEMS_PER_PAGE)}><ChevronRight className="w-4 h-4" /></Button>
+                            </div>
                         </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card className="border-2 border-blue-100 bg-blue-50/30">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-[10px] font-black uppercase text-blue-700 tracking-widest flex items-center gap-2">
-                        <Lightbulb className="w-3.5 h-3.5" /> 💡 Estrategia de Liquidez Recomendada
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="flex items-center justify-between">
-                    <div className="space-y-1">
-                        <p className="text-xs font-bold text-blue-900 uppercase">
-                            Liberar capital de la mercancía estancada
-                        </p>
-                        <p className="text-[10px] font-medium text-blue-700 uppercase tracking-tighter">
-                            Sugerencia: Arma packs de accesorios o aplica "Tasa de Oferta" a los {stats.coldProducts.length} artículos fríos.
-                        </p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-[8px] font-black text-blue-400 uppercase">Valor de Rescate:</p>
-                        <p className="text-xl font-black text-blue-700">${formatCurrency(stats.stagnantCapital)}</p>
-                    </div>
+                    )}
                 </CardContent>
             </Card>
         </div>
