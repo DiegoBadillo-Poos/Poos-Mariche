@@ -25,9 +25,9 @@ function POSContent() {
     const [cart, setCart] = useState<CartItem[]>([]);
     const [activeRepairJob, setActiveRepairJob] = useState<RepairJob | null>(null);
 
-    // OPTIMIZACIÓN: Añadido limit(20) para cargar lo necesario para el grid del POS sin saturar lecturas
+    // Límite aumentado a 200 para el POS para asegurar que la mayoría de los productos comunes estén disponibles.
     const productsCollection = useMemoFirebase(() => 
-        (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(20)) : null,
+        (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(200)) : null,
         [firestore, user?.uid]
     );
     const { data: products, isLoading: productsLoading } = useCollection<Product>(productsCollection);

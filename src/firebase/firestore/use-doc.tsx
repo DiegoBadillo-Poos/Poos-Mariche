@@ -18,11 +18,11 @@ export interface UseDocResult<T> {
   isLoading: boolean;
   error: FirestoreError | Error | null;
   refetch: () => Promise<void>;
+  mutate: (newData: WithId<T> | ((prev: WithId<T> | null) => WithId<T> | null)) => void;
 }
 
 /**
- * Hook refactorizado para usar getDoc (Pull) en lugar de onSnapshot (Push).
- * El documento se carga una sola vez al montar o al llamar refetch().
+ * Hook refactorizado para usar getDoc (Pull) con soporte de Mutación Optimista.
  */
 export function useDoc<T = any>(
   memoizedDocRef: DocumentReference<DocumentData> | null | undefined,
@@ -30,6 +30,10 @@ export function useDoc<T = any>(
   const [data, setData] = useState<WithId<T> | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+
+  const mutate = useCallback((updater: WithId<T> | ((prev: WithId<T> | null) => WithId<T> | null)) => {
+    setData(current => typeof updater === 'function' ? updater(current) : updater);
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!memoizedDocRef) {
@@ -65,5 +69,5 @@ export function useDoc<T = any>(
     fetchData();
   }, [fetchData]);
 
-  return { data, isLoading, error, refetch: fetchData };
+  return { data, isLoading, error, refetch: fetchData, mutate };
 }

@@ -49,14 +49,14 @@ function RepairsContent() {
     const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-    // OPTIMIZACIÓN: Añadido limit(20) para evitar descarga de todo el historial de reparaciones y ahorrar cuota
+    // Aumentado a 100 para Reparaciones.
     const repairJobsQuery = useMemoFirebase(() =>
         (firestore && user) 
-            ? query(collection(firestore, 'users', user.uid, 'repair_jobs'), orderBy('createdAt', 'desc'), limit(20)) 
+            ? query(collection(firestore, 'users', user.uid, 'repair_jobs'), orderBy('createdAt', 'desc'), limit(100)) 
             : null,
         [firestore, user?.uid]
     );
-    const { data: repairJobs, isLoading } = useCollection<RepairJob>(repairJobsQuery);
+    const { data: repairJobs, isLoading, mutate: mutateRepairs } = useCollection<RepairJob>(repairJobsQuery);
 
     const filteredRepairJobs = useMemo(() => {
         if (!repairJobs) return [];
@@ -83,10 +83,21 @@ function RepairsContent() {
         return temp;
     }, [repairJobs, dateRange, statusFilter]);
 
+    const handleOptimisticUpdate = (updatedJob: RepairJob) => {
+        mutateRepairs((prev) => {
+            if (!prev) return [updatedJob as any];
+            const exists = prev.find(j => j.id === updatedJob.id);
+            if (exists) {
+                return prev.map(j => j.id === updatedJob.id ? (updatedJob as any) : j);
+            }
+            return [updatedJob as any, ...prev];
+        });
+    };
+
     return (
         <>
             <PageHeader title="Reparaciones">
-                <RepairFormDialog>
+                <RepairFormDialog onSaved={handleOptimisticUpdate}>
                     <Button size="sm" className="sm:h-10 px-2 sm:px-4"><PlusCircle className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Registrar</span> Reparación</Button>
                 </RepairFormDialog>
             </PageHeader>
@@ -106,6 +117,7 @@ function RepairsContent() {
                     isLoading={isLoading}
                     filterPlaceholder="Buscar cliente o equipo..."
                     globalFilterFn={repairFilterFn}
+                    meta={{ mutate: mutateRepairs }}
                 >
                     {(table) => (
                         <div className="flex items-center gap-2 w-full sm:w-auto">

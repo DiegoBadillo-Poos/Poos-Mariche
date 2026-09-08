@@ -19,6 +19,7 @@ export interface UseCollectionResult<T> {
   isLoading: boolean;
   error: FirestoreError | Error | null;
   refetch: () => Promise<void>;
+  mutate: (updater: WithId<T>[] | ((prev: WithId<T>[] | null) => WithId<T>[] | null)) => void;
 }
 
 export interface InternalQuery extends Query<DocumentData> {
@@ -31,8 +32,7 @@ export interface InternalQuery extends Query<DocumentData> {
 }
 
 /**
- * Hook refactorizado para usar getDocs (Pull) en lugar de onSnapshot (Push).
- * Reduce drásticamente las lecturas pasivas de Firestore.
+ * Hook refactorizado para usar getDocs (Pull) y soporte de Mutación Optimista.
  */
 export function useCollection<T = any>(
     memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & {__memo?: boolean})  | null | undefined,
@@ -41,6 +41,10 @@ export function useCollection<T = any>(
   const [data, setData] = useState<ResultItemType[] | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+
+  const mutate = useCallback((updater: ResultItemType[] | ((prev: ResultItemType[] | null) => ResultItemType[] | null)) => {
+    setData(current => typeof updater === 'function' ? updater(current) : updater);
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!memoizedTargetRefOrQuery) {
@@ -85,5 +89,5 @@ export function useCollection<T = any>(
     throw new Error(memoizedTargetRefOrQuery + ' was not properly memoized using useMemoFirebase');
   }
 
-  return { data, isLoading, error, refetch: fetchData };
+  return { data, isLoading, error, refetch: fetchData, mutate };
 }

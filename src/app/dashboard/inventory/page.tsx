@@ -59,6 +59,13 @@ function BulkDeleteButton({ table }: { table: TanstackTable<Product> }) {
         });
 
         try {
+            // OPTIMISTIC UPDATE
+            const mutate = (table.options.meta as any)?.mutate;
+            if (mutate) {
+                const idsToDelete = selectedRows.map(r => r.original.id);
+                mutate((prev: any) => prev?.filter((p: any) => !idsToDelete.includes(p.id)) || null);
+            }
+
             await batch.commit();
             toast({
                 title: "Productos Eliminados",
@@ -107,12 +114,12 @@ function InventoryContent() {
     );
     const { data: profile } = useDoc<UserProfile>(profileRef);
     
-    // OPTIMIZACIÓN: Añadido limit(20) para evitar descarga masiva de documentos y ahorrar lecturas
+    // Aumentado a 150 para que el usuario vea su catálogo, pero con tope para salvar lecturas.
     const productsCollection = useMemoFirebase(() =>
-        (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(20)) : null,
+        (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(150)) : null,
         [firestore, user?.uid]
     );
-    const { data: products, isLoading } = useCollection<Product>(productsCollection);
+    const { data: products, isLoading, mutate: mutateProducts } = useCollection<Product>(productsCollection);
 
     const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out' | 'old'>('all');
     const [categoryFilter, setCategoryFilter] = useState('all');
@@ -157,11 +164,22 @@ function InventoryContent() {
         return temp;
     }, [products, stockFilter, categoryFilter, showAging]);
 
+    const handleOptimisticUpdate = (newProduct: Product) => {
+        mutateProducts((prev) => {
+            if (!prev) return [newProduct as any];
+            const exists = prev.find(p => p.id === newProduct.id);
+            if (exists) {
+                return prev.map(p => p.id === newProduct.id ? (newProduct as any) : p);
+            }
+            return [newProduct as any, ...prev];
+        });
+    };
+
     return (
         <>
             <PageHeader title="Inventario">
                 <PriceCalculatorDialog><Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10"><Calculator className="h-4 w-4" /></Button></PriceCalculatorDialog>
-                <ProductFormDialog productCount={products?.length || 0}>
+                <ProductFormDialog productCount={products?.length || 0} onSaved={handleOptimisticUpdate}>
                     <Button size="sm" className="sm:h-10 px-2 sm:px-4"><PlusCircle className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Añadir</span> Producto</Button>
                 </ProductFormDialog>
             </PageHeader>
@@ -169,8 +187,8 @@ function InventoryContent() {
                 <Tabs value={stockFilter} onValueChange={(v) => setStockFilter(v as any)} className="mb-4">
                     <TabsList className="grid w-full h-auto grid-cols-2 sm:grid-cols-4 p-1 bg-muted/50">
                         <TabsTrigger value="all" className="text-[10px] sm:text-sm py-2">Todos</TabsTrigger>
-                        <TabsTrigger value="low" className="text-[10px] sm:text-sm py-2">Stock Bajo</TabsTrigger>
-                        <TabsTrigger value="out" className="text-[10px] sm:text-sm py-2">Sin Stock</TabsTrigger>
+                        <TabsTrigger value="low" className="text-[10px] sm:text-sm py-2 text-amber-600 font-bold">Stock Bajo</TabsTrigger>
+                        <TabsTrigger value="out" className="text-[10px] sm:text-sm py-2 text-destructive font-bold">Sin Stock</TabsTrigger>
                         {showAging && (
                             <TabsTrigger value="old" className="text-[10px] sm:text-sm py-2 text-amber-600 font-bold">
                                 <Clock className="w-3.5 h-3.5 mr-1 sm:mr-1.5" /> <span className="hidden sm:inline">Antiguos (+15d)</span><span className="sm:hidden">+15d</span>
@@ -183,7 +201,7 @@ function InventoryContent() {
                     data={filteredProducts}
                     isLoading={isLoading}
                     filterPlaceholder="Buscar productos..."
-                    meta={{ allProducts: products || [], showAging, showRepairs }}
+                    meta={{ allProducts: products || [], showAging, showRepairs, mutate: mutateProducts }}
                     globalFilterFn={productFilterFn}
                 >
                     {(table) => (

@@ -77,7 +77,7 @@ function cleanObject(obj: any): any {
     return cleaned;
 }
 
-export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: { repairJob?: RepairJob | null, children?: ReactNode, isOpen?: boolean, onOpenChange?: (v: boolean) => void }) {
+export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, onSaved }: { repairJob?: RepairJob | null, children?: ReactNode, isOpen?: boolean, onOpenChange?: (v: boolean) => void, onSaved?: (job: RepairJob) => void }) {
   const { firestore, user } = useFirebase();
   const [internalOpen, setInternalOpen] = useState(false);
   const [partsPopoverOpen, setPartsPopoverOpen] = useState(false);
@@ -265,7 +265,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
     if (!firestore || !user || isSubmitting) return;
     setIsSubmitting(true);
     try {
-        const result = await runTransaction(firestore, async (transaction) => {
+        const finalJob = await runTransaction(firestore, async (transaction) => {
             const jobId = repairJob?.id || `R-${format(new Date(), "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
             const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', jobId);
 
@@ -354,9 +354,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 partsConsumed = true;
             }
 
-            const finalReserved = finalReservedParts.map(({isConsumed, ...p}) => p);
-            const finalConsumed = finalConsumedParts.map(({isConsumed, ...p}) => p);
-
             const finalData = cleanObject({ 
                 ...values, id: jobId, 
                 estimatedCost: Number(estimatedTotal.toFixed(2)),
@@ -364,18 +361,21 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 isPaid: currentPaid >= (estimatedTotal - 0.01),
                 status: (currentPaid >= (estimatedTotal - 0.01) && values.status === 'Pendiente') ? 'Pagado' : values.status,
                 createdAt: repairJob?.createdAt || new Date().toISOString(),
-                reservedParts: finalReserved, 
-                consumedParts: finalConsumed, 
+                reservedParts: finalReservedParts.map(({isConsumed, ...p}) => p), 
+                consumedParts: finalConsumedParts.map(({isConsumed, ...p}) => p), 
                 partsConsumed, isPromo: effectiveIsPromo, ...completionData
             });
             
             transaction.set(jobRef, finalData, { merge: true });
-            return finalData;
+            return finalData as RepairJob;
         });
+
+        // Mutar el estado local optimísticamente si se provee callback
+        if (onSaved) onSaved(finalJob);
 
         localStorage.removeItem(DRAFT_KEY);
         toast({ title: "Orden Sincronizada" });
-        if (!repairJob) handlePrintAllTickets({ repairJob: result as RepairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, () => {});
+        if (!repairJob) handlePrintAllTickets({ repairJob: finalJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, () => {});
         setOpen(false);
     } catch (e: any) {
         toast({ variant: "destructive", title: "Error", description: e.message });

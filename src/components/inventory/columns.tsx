@@ -35,17 +35,24 @@ import { Checkbox } from "../ui/checkbox"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
 import { differenceInDays, parseISO } from "date-fns"
 
-const ActionsCell = ({ product }: { product: Product }) => {
+const ActionsCell = ({ product, table }: { product: Product, table: any }) => {
     const { toast } = useToast();
     const { firestore, user } = useFirebase();
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
     const handleDelete = () => {
         if (!firestore || !user || !product.id) return;
+        
+        // OPTIMISTIC DELETE
+        const mutate = (table.options.meta as any)?.mutate;
+        if (mutate) {
+            mutate((prev: any) => prev?.filter((p: any) => p.id !== product.id) || null);
+        }
+
         const productRef = doc(firestore, 'users', user.uid, 'products', product.id);
         deleteDocumentNonBlocking(productRef);
         toast({
-            title: "Producto Eliminar",
+            title: "Producto Eliminado",
             description: `${product.name} ha sido eliminado del inventario.`,
             variant: "destructive"
         })
@@ -55,6 +62,13 @@ const ActionsCell = ({ product }: { product: Product }) => {
     const handleTriggerEdit = () => {
         document.getElementById(`edit-trigger-${product.id}`)?.click();
     }
+
+    const handleOptimisticUpdate = (updatedProduct: Product) => {
+        const mutate = (table.options.meta as any)?.mutate;
+        if (mutate) {
+            mutate((prev: any) => prev?.map((p: any) => p.id === updatedProduct.id ? updatedProduct : p) || null);
+        }
+    };
 
     return (
         <>
@@ -85,7 +99,7 @@ const ActionsCell = ({ product }: { product: Product }) => {
                 </DropdownMenuContent>
             </DropdownMenu>
 
-            <ProductFormDialog product={product}>
+            <ProductFormDialog product={product} onSaved={handleOptimisticUpdate}>
                 <button id={`edit-trigger-${product.id}`} style={{ display: 'none' }}></button>
             </ProductFormDialog>
 
@@ -387,6 +401,6 @@ export const columns: ColumnDef<Product>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => <ActionsCell product={row.original} />,
+    cell: ({ row, table }) => <ActionsCell product={row.original} table={table} />,
   },
 ]

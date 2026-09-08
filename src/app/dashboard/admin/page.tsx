@@ -311,7 +311,7 @@ function AdminContent() {
     const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
 
     const usersCollection = useMemoFirebase(() => 
-        (firestore) ? query(collection(firestore, "users"), limit(20)) : null, 
+        (firestore) ? query(collection(firestore, "users"), limit(100)) : null, 
         [firestore]
     );
     const { data: users, isLoading } = useCollection<UserProfile>(usersCollection);
@@ -375,7 +375,6 @@ function AdminContent() {
         <>
             <PageHeader title="Administración Central" />
             <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
-                
                 <div className="grid gap-6 md:grid-cols-2">
                     <Card className="shadow-sm border-primary/10">
                         <CardHeader className="pb-2">

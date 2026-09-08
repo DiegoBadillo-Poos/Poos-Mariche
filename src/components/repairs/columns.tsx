@@ -171,7 +171,7 @@ function RepairHistoryDialog({ repairJob, children }: { repairJob: RepairJob, ch
   );
 }
 
-const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
+const ActionsCell = ({ repairJob, table }: { repairJob: RepairJob, table: any }) => {
     const { toast } = useToast();
     const { firestore, user } = useFirebase();
     const router = useRouter();
@@ -197,6 +197,12 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
         if (!firestore || !repairJob.id || !user) return;
         
         try {
+            // OPTIMISTIC DELETE
+            const mutate = (table.options.meta as any)?.mutate;
+            if (mutate) {
+                mutate((prev: any) => prev?.filter((j: any) => j.id !== repairJob.id) || null);
+            }
+
             await runTransaction(firestore, async (transaction) => {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id!);
                 const jobSnap = await transaction.get(jobRef);
@@ -275,6 +281,13 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
         });
     }
 
+    const handleOptimisticUpdate = (updatedJob: RepairJob) => {
+        const mutate = (table.options.meta as any)?.mutate;
+        if (mutate) {
+            mutate((prev: any) => prev?.map((j: any) => j.id === updatedJob.id ? updatedJob : j) || null);
+        }
+    };
+
     return (
         <>
             <DropdownMenu>
@@ -301,7 +314,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                         </DropdownMenuItem>
                     </RepairHistoryDialog>
 
-                    <RepairFormDialog repairJob={repairJob}>
+                    <RepairFormDialog repairJob={repairJob} onSaved={handleOptimisticUpdate}>
                         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                              <Edit className="mr-2 h-4 w-4" />
                             Editar / Detalles
@@ -356,7 +369,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     )
 }
 
-const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
+const StatusCell = ({ repairJob, table }: { repairJob: RepairJob, table: any }) => {
     const { toast } = useToast();
     const { firestore, user } = useFirebase();
     const [isUpdating, setIsUpdating] = useState(false);
@@ -375,7 +388,6 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
                 const reservedParts = jobData.reservedParts || [];
                 const currentConsumed = jobData.consumedParts || [];
 
-                // READ ALL PRODUCTS FIRST (Firebase Transaction Rule)
                 const productSnapshots = new Map<string, DocumentSnapshot>();
                 if (newStatus === 'Completado') {
                     for (const part of reservedParts) {
@@ -385,7 +397,6 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     }
                 }
 
-                // NOW PERFORM ALL WRITES
                 let updateData: Partial<RepairJob> = { status: newStatus };
 
                 if (newStatus === 'Completado') {
@@ -407,6 +418,12 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     updateData.partsConsumed = true;
                     updateData.consumedParts = [...currentConsumed, ...reservedParts];
                     updateData.reservedParts = [];
+                }
+
+                // OPTIMISTIC UPDATE
+                const mutate = (table.options.meta as any)?.mutate;
+                if (mutate) {
+                    mutate((prev: any) => prev?.map((j: any) => j.id === repairJob.id ? { ...j, ...updateData } : j) || null);
                 }
 
                 transaction.update(jobRef, updateData);
@@ -488,7 +505,7 @@ export const columns: ColumnDef<RepairJob>[] = [
   {
     accessorKey: "status",
     header: "Estado",
-    cell: ({ row }) => <StatusCell repairJob={row.original} />,
+    cell: ({ row, table }) => <StatusCell repairJob={row.original} table={table} />,
   },
   {
     id: "timer",
@@ -521,6 +538,6 @@ export const columns: ColumnDef<RepairJob>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => <ActionsCell repairJob={row.original} />,
+    cell: ({ row, table }) => <ActionsCell repairJob={row.original} table={table} />,
   },
 ]

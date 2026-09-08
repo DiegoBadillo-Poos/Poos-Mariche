@@ -214,9 +214,14 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
         const docId = product?.id || doc(collection(firestore, 'users', user.uid, 'products')).id;
         const productRef = doc(firestore, 'users', user.uid, 'products', docId);
         
-        setDocumentNonBlocking(productRef, { ...finalValues, id: docId }, { merge: true });
+        const finalProduct = { ...finalValues, id: docId };
+        setDocumentNonBlocking(productRef, finalProduct, { merge: true });
         
         toast({ title: isEditing ? "Producto Actualizado" : "Producto Añadido" });
+        
+        // Optimistic Callback
+        if (onSaved) onSaved(finalProduct as any);
+        
         setIsSubmitting(false);
         setOpen(false);
     } catch (e) {
