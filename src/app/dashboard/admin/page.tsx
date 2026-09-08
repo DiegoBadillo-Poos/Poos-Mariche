@@ -33,7 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Megaphone, Save, Trash2, Loader2, Users, LayoutGrid, ShieldOff, KeyRound, LockKeyhole, ShieldCheck, Briefcase, Activity, Database, Zap, Globe, Ban, CheckCircle2, CalendarDays } from "lucide-react";
+import { Edit, Megaphone, Save, Trash2, Loader2, Users, LayoutGrid, ShieldOff, KeyRound, LockKeyhole, ShieldCheck, Briefcase, Activity, Database, Zap, Globe, Ban, CheckCircle2, CalendarDays, RefreshCw } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { SecurityGate } from "@/components/security-gate";
@@ -63,75 +63,105 @@ function AnnouncementEditor() {
         firestore ? doc(firestore, 'system', 'announcements') : null, 
         [firestore]
     );
-    const { data: announcement, mutate } = useDoc<any>(announcementRef);
+    const { data: announcement, isLoading: isDocLoading } = useDoc<any>(announcementRef);
+    
+    // Estados locales para edición
     const [message, setMessage] = useState("");
     const [type, setType] = useState("info");
     const [active, setActive] = useState(false);
-    const [isDirty, setIsDirty] = useState(false);
     
-    // Bandera para asegurar que solo cargamos de la DB una vez al entrar
-    const hasLoaded = useRef(false);
+    // Estado crítico para controlar la carga inicial
+    const [hasInitialized, setHasInitialized] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
+    // Efecto de inicialización única (Solo corre cuando llegan los datos por primera vez)
     useEffect(() => {
-        if (announcement && !hasLoaded.current) {
-            setMessage(announcement.message || "");
-            setType(announcement.type || "info");
-            setActive(announcement.active || false);
-            hasLoaded.current = true;
+        if (!isDocLoading && !hasInitialized) {
+            if (announcement) {
+                setMessage(announcement.message || "");
+                setType(announcement.type || "info");
+                setActive(announcement.active || false);
+            }
+            setHasInitialized(true);
         }
-    }, [announcement]);
+    }, [announcement, isDocLoading, hasInitialized]);
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!announcementRef) return;
         
+        setIsSaving(true);
         const newData = {
-            message,
+            message: message.trim(),
             type,
             active,
             updatedAt: new Date().toISOString()
         };
 
-        // Mutación optimista local para evitar parpadeos
-        mutate(prev => prev ? { ...prev, ...newData } : (newData as any));
-        
-        setDocumentNonBlocking(announcementRef, newData, { merge: true });
-        toast({ title: "Anuncio Actualizado" });
-        setIsDirty(false);
+        try {
+            // Guardamos y esperamos la confirmación de la nube
+            await setDocumentNonBlocking(announcementRef, newData, { merge: true });
+            toast({ title: "Comunicado Publicado", description: "Todos los negocios verán este mensaje ahora." });
+        } catch (e) {
+            toast({ variant: "destructive", title: "Error al publicar" });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
+    if (!hasInitialized) {
+        return (
+            <Card className="h-full border-dashed flex items-center justify-center py-10">
+                <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary opacity-30" />
+                    <p className="text-[10px] font-black uppercase text-muted-foreground">Cargando Sistema...</p>
+                </div>
+            </Card>
+        );
+    }
+
     return (
-        <Card className="border-primary/20 shadow-lg h-full">
+        <Card className="border-primary/20 shadow-lg h-full overflow-hidden">
             <CardHeader className="bg-primary/5 pb-3">
-                <CardTitle className="flex items-center gap-2 text-primary text-sm uppercase font-black"><Megaphone className="w-4 h-4"/> Comunicado Global</CardTitle>
+                <CardTitle className="flex items-center gap-2 text-primary text-sm uppercase font-black">
+                    <Megaphone className="w-4 h-4"/> Comunicado Global
+                </CardTitle>
+                <CardDescription className="text-[10px] font-bold">EMISIÓN DE ALERTAS DEL SISTEMA</CardDescription>
             </CardHeader>
             <CardContent className="pt-4 space-y-4">
                 <div className="space-y-2">
-                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Mensaje para todos los negocios</Label>
+                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Mensaje del Administrador</Label>
                     <Input 
                         value={message} 
-                        onChange={(e) => { setMessage(e.target.value); setIsDirty(true); }} 
-                        placeholder="Ej: Mantenimiento programado..." 
-                        className="text-xs"
+                        onChange={(e) => setMessage(e.target.value)} 
+                        placeholder="Ej: Mantenimiento programado para hoy a las 8PM..." 
+                        className="text-xs h-10 border-2"
                     />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Nivel</Label>
-                        <Select value={type} onValueChange={(v) => { setType(v); setIsDirty(true); }}>
-                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Nivel de Alerta</Label>
+                        <Select value={type} onValueChange={setType}>
+                            <SelectTrigger className="h-9 text-xs font-bold uppercase"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="info" className="text-xs">Info</SelectItem>
-                                <SelectItem value="warning" className="text-xs">Advertencia</SelectItem>
-                                <SelectItem value="critical" className="text-xs">Crítico</SelectItem>
+                                <SelectItem value="info" className="text-xs">Información (Azul)</SelectItem>
+                                <SelectItem value="warning" className="text-xs">Advertencia (Amarillo)</SelectItem>
+                                <SelectItem value="critical" className="text-xs">Crítico (Rojo)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                     <div className="flex items-center gap-2 pt-6">
-                        <Switch checked={active} onCheckedChange={(v) => { setActive(v); setIsDirty(true); }} />
-                        <Label className="text-[10px] font-bold uppercase">Activo</Label>
+                        <Switch checked={active} onCheckedChange={setActive} id="ann-active" />
+                        <Label className="text-[10px] font-black uppercase cursor-pointer" htmlFor="ann-active">Visible</Label>
                     </div>
                 </div>
-                <Button className="w-full h-9 text-xs font-bold" onClick={handleSave} disabled={!isDirty}><Save className="mr-2 h-3.5 w-3.5"/> Publicar</Button>
+                <Button 
+                    className="w-full h-11 text-xs font-black uppercase tracking-widest shadow-xl" 
+                    onClick={handleSave} 
+                    disabled={isSaving}
+                >
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>} 
+                    {isSaving ? "PUBLICANDO..." : "PUBLICAR COMUNICADO"}
+                </Button>
             </CardContent>
         </Card>
     );

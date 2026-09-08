@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   DocumentReference,
-  getDoc,
+  onSnapshot,
   DocumentData,
   FirestoreError,
-  DocumentSnapshot,
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -22,20 +21,27 @@ export interface UseDocResult<T> {
 }
 
 /**
- * Hook refactorizado para usar getDoc (Pull) con soporte de Mutación Optimista.
+ * Hook de Tiempo Real (PUSH).
+ * Usa onSnapshot para asegurar que los datos se actualicen instantáneamente
+ * sin necesidad de refrescar la página, manteniendo eficiencia en lecturas.
  */
 export function useDoc<T = any>(
   memoizedDocRef: DocumentReference<DocumentData> | null | undefined,
 ): UseDocResult<T> {
   const [data, setData] = useState<WithId<T> | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
   const mutate = useCallback((updater: WithId<T> | ((prev: WithId<T> | null) => WithId<T> | null)) => {
     setData(current => typeof updater === 'function' ? updater(current) : updater);
   }, []);
 
-  const fetchData = useCallback(async () => {
+  // Refetch se mantiene por compatibilidad, pero onSnapshot ya lo hace solo
+  const refetch = useCallback(async () => {
+      // El listener de onSnapshot ya mantiene los datos frescos
+  }, []);
+
+  useEffect(() => {
     if (!memoizedDocRef) {
       setData(null);
       setIsLoading(false);
@@ -45,29 +51,32 @@ export function useDoc<T = any>(
     setIsLoading(true);
     setError(null);
 
-    try {
-      const snapshot = await getDoc(memoizedDocRef);
-      if (snapshot.exists()) {
-        setData({ ...(snapshot.data() as T), id: snapshot.id });
-      } else {
-        setData(null);
+    // Creamos el escuchador en tiempo real
+    const unsubscribe = onSnapshot(
+      memoizedDocRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setData({ ...(snapshot.data() as T), id: snapshot.id });
+        } else {
+          setData(null);
+        }
+        setIsLoading(false);
+      },
+      (err: any) => {
+        console.error("Firestore Doc Listener Error:", err);
+        const contextualError = new FirestorePermissionError({
+          operation: 'get',
+          path: memoizedDocRef.path,
+        });
+        setError(contextualError);
+        errorEmitter.emit('permission-error', contextualError);
+        setIsLoading(false);
       }
-    } catch (err: any) {
-      const contextualError = new FirestorePermissionError({
-        operation: 'get',
-        path: memoizedDocRef.path,
-      });
+    );
 
-      setError(contextualError);
-      errorEmitter.emit('permission-error', contextualError);
-    } finally {
-      setIsLoading(false);
-    }
+    // Limpieza al desmontar el componente
+    return () => unsubscribe();
   }, [memoizedDocRef]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  return { data, isLoading, error, refetch: fetchData, mutate };
+  return { data, isLoading, error, refetch, mutate };
 }
