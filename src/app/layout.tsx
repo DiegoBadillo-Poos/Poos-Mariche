@@ -14,13 +14,12 @@ import { SWRConfig } from 'swr';
 import './globals.css';
 
 /**
- * AppContent ha sido refactorizada para eliminar el onSnapshot pasivo.
- * Ahora solo verifica la sesión una vez al cargar para ahorrar lecturas.
+ * AppContent gestiona la sesión única.
+ * El último en entrar toma el control (Last-In Wins).
  */
 function AppContent({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading, firestore, auth } = useFirebase();
   const [isInitializing, setIsInitializing] = useState(true);
-  const [isKickingOut, setIsKickingOut] = useState(false);
   const currentSessionId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -34,10 +33,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
         await user.getIdToken(true);
 
         if (!currentSessionId.current) {
-          let sid = sessionStorage.getItem('mm_active_session_id');
+          // Usamos sessionStorage para que cada pestaña sea una sesión independiente
+          let sid = sessionStorage.getItem('mm_session_id');
           if (!sid) {
             sid = Math.random().toString(36).substring(2) + Date.now();
-            sessionStorage.setItem('mm_active_session_id', sid);
+            sessionStorage.setItem('mm_session_id', sid);
           }
           currentSessionId.current = sid;
         }
@@ -52,20 +52,13 @@ function AppContent({ children }: { children: React.ReactNode }) {
         const profileSnap = await getDoc(profileRef);
         const existingData = profileSnap.exists() ? profileSnap.data() : {};
 
-        // Validar sesión única de forma estática (sin listener)
-        if (existingData.lastSessionId && existingData.lastSessionId !== sessionId) {
-           // Si ya hay otra sesión activa registrada, desconectamos la actual
-           handleAutoSignOut();
-           return;
-        }
-
-        const allAvailableModules = ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis', 'fiados'];
+        const allAvailableModules = ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis', 'fiados', 'inventory_aging', 'loans', 'exchange', 'payroll', 'treasury'];
 
         const profileData = {
           uid: user.uid,
           email: user.email,
           isAdmin: isAdmin,
-          lastSessionId: sessionId,
+          lastSessionId: sessionId, // Esta pestaña toma el control ahora
           updatedAt: new Date().toISOString(),
           ...((!profileSnap.exists() || !existingData.enabledModules) ? {
             licenseStatus: isAdmin ? 'active' : 'expired',
@@ -84,6 +77,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
           })
         };
 
+        // Sobrescribimos la sesión vieja con la nueva
         await setDoc(profileRef, profileData, { merge: true });
         setIsInitializing(false);
       } catch (serverError: any) {
@@ -98,32 +92,41 @@ function AppContent({ children }: { children: React.ReactNode }) {
       }
     };
 
-    const handleAutoSignOut = async () => {
-      setIsKickingOut(true);
-      try {
-        sessionStorage.removeItem('mm_active_session_id');
-        await signOut(auth);
-        setTimeout(() => { window.location.href = '/'; }, 500);
-      } catch (e) {
-        window.location.href = '/';
-      }
-    };
-
     syncProfileAndSession();
 
   }, [user, firestore, auth]);
 
-  // Update pulsante de actividad (una sola escritura cada 2 minutos)
+  // Heartbeat y Validación de Sesión Única (Cierra la vieja si entra una nueva)
   useEffect(() => {
-    if (!user || !firestore || isInitializing) return;
+    if (!user || !firestore || isInitializing || !auth) return;
 
-    const interval = setInterval(() => {
-        const profileRef = doc(firestore, 'users', user.uid);
-        updateDocumentNonBlocking(profileRef, { updatedAt: new Date().toISOString() });
-    }, 120000);
+    const interval = setInterval(async () => {
+        try {
+            const profileRef = doc(firestore, 'users', user.uid);
+            const snap = await getDoc(profileRef);
+            
+            if (snap.exists()) {
+                const data = snap.data();
+                const mySessionId = sessionStorage.getItem('mm_session_id');
+                
+                // Si el ID en la DB es distinto al mío, significa que otra pestaña/dispositivo entró después
+                if (data.lastSessionId && data.lastSessionId !== mySessionId) {
+                    sessionStorage.removeItem('mm_session_id');
+                    await signOut(auth);
+                    window.location.reload();
+                    return;
+                }
+
+                // Si soy el dueño actual, solo actualizo mi latido
+                updateDocumentNonBlocking(profileRef, { updatedAt: new Date().toISOString() });
+            }
+        } catch (e) {
+            // Error silencioso para no interrumpir la experiencia si falla el internet momentáneamente
+        }
+    }, 120000); // Cada 2 minutos
 
     return () => clearInterval(interval);
-  }, [user, firestore, isInitializing]);
+  }, [user, firestore, isInitializing, auth]);
 
   if (isUserLoading || isInitializing) {
     return (
@@ -131,24 +134,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary opacity-50" />
           <p className="text-sm text-muted-foreground animate-pulse font-medium">Validando acceso...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isKickingOut) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-6 text-center max-w-xs px-4">
-          <div className="p-4 bg-amber-50 rounded-full">
-            <Loader2 className="h-10 w-10 animate-spin text-amber-600" />
-          </div>
-          <div className="space-y-2">
-            <p className="font-bold text-lg">Sesión iniciada en otro lugar</p>
-            <p className="text-sm text-muted-foreground">
-              Hemos detectado una nueva conexión con tu cuenta. Por seguridad, esta ventana se cerrará.
-            </p>
-          </div>
         </div>
       </div>
     );
@@ -183,11 +168,7 @@ export default function RootLayout({
             revalidateOnFocus: false,
             revalidateOnReconnect: false,
             revalidateIfStale: false,
-<<<<<<< HEAD
             dedupingInterval: 600000,
-=======
-            dedupingInterval: 600000, // 10 minutos de caché para evitar lecturas duplicadas
->>>>>>> ec016efa281ea5051cb33f97c915eb58b7560282
           }}
         >
           <FirebaseClientProvider>
