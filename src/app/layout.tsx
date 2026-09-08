@@ -10,6 +10,7 @@ import { signOut } from 'firebase/auth';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 import { Loader2 } from 'lucide-react';
+import { SWRConfig } from 'swr';
 import './globals.css';
 
 function AppContent({ children }: { children: React.ReactNode }) {
@@ -204,12 +205,21 @@ export default function RootLayout({
         <title>POS MARICHE - Gestión de Negocio</title>
       </head>
       <body className={cn("font-sans antialiased", process.env.NODE_ENV === 'development' ? 'debug-screens' : '')}>
-        <FirebaseClientProvider>
-          <AppContent>
-            {children}
-          </AppContent>
-          <Toaster />
-        </FirebaseClientProvider>
+        <SWRConfig 
+          value={{
+            revalidateOnFocus: false,
+            revalidateOnReconnect: false,
+            revalidateIfStale: false,
+            dedupingInterval: 600000, // 10 minutos de caché para evitar lecturas duplicadas
+          }}
+        >
+          <FirebaseClientProvider>
+            <AppContent>
+              {children}
+            </AppContent>
+            <Toaster />
+          </FirebaseClientProvider>
+        </SWRConfig>
       </body>
     </html>
   );
