@@ -183,7 +183,11 @@ export default function RootLayout({
             revalidateOnFocus: false,
             revalidateOnReconnect: false,
             revalidateIfStale: false,
+<<<<<<< HEAD
             dedupingInterval: 600000,
+=======
+            dedupingInterval: 600000, // 10 minutos de caché para evitar lecturas duplicadas
+>>>>>>> ec016efa281ea5051cb33f97c915eb58b7560282
           }}
         >
           <FirebaseClientProvider>
