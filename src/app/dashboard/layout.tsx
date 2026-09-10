@@ -14,6 +14,7 @@ import { signOut } from 'firebase/auth';
 import { isAfter, parseISO, differenceInMinutes } from 'date-fns';
 import { GlobalAnnouncement } from '@/components/dashboard/global-announcement';
 import { RepairDraftPill } from '@/components/repairs/repair-draft-pill';
+import { DashboardProvider } from '@/contexts/dashboard-context';
 import type { ReactNode } from 'react';
 
 const ExchangeRateReminder = dynamic(
@@ -125,9 +126,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   // Lógica de validación de Licencia Estricta
-  // Un usuario está bloqueado si:
-  // 1. NO es Admin Global Y su status es 'expired'
-  // 2. NO es Admin Global Y tiene una fecha de vencimiento que ya pasó
   const isExpired = profile && 
                     !profile.isAdmin && 
                     (profile.licenseStatus === 'expired' || (profile.licenseExpiry && isAfter(new Date(), parseISO(profile.licenseExpiry))));
@@ -137,14 +135,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SidebarProvider>
-      <SidebarNav />
-      <SidebarInset>
-          <GlobalAnnouncement />
-          <ExchangeRateReminder />
-          {children}
-          <RepairDraftPill />
-      </SidebarInset>
-    </SidebarProvider>
+    <DashboardProvider>
+        <SidebarProvider>
+        <SidebarNav />
+        <SidebarInset>
+            <GlobalAnnouncement />
+            <ExchangeRateReminder />
+            {children}
+            <RepairDraftPill />
+        </SidebarInset>
+        </SidebarProvider>
+    </DashboardProvider>
   );
 }
