@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/page-header";
 import { useCollection, useFirebase, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase";
-import { collection, doc, query, orderBy } from "firebase/firestore";
+import { collection, doc, query, orderBy, limit } from "firebase/firestore";
 import type { CurrencyExchange, Sale, PaymentMethod, PayrollPayment, Loan, Expense, AppSettings, BsTransfer } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -50,38 +50,39 @@ function ExchangeContent() {
         to: endOfDay(new Date()),
     });
 
+    // ACOTE DE CONSULTAS: limit(50) para proteger rendimiento
     const exchangeCollection = useMemoFirebase(() => 
-        (firestore && user) ? query(collection(firestore, "users", user.uid, "currency_exchanges"), orderBy("createdAt", "desc")) : null,
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "currency_exchanges"), orderBy("createdAt", "desc"), limit(50)) : null,
         [firestore, user?.uid]
     );
     const { data: exchanges } = useCollection<CurrencyExchange>(exchangeCollection);
 
     const transfersCollection = useMemoFirebase(() => 
-        (firestore && user) ? query(collection(firestore, "users", user.uid, "bs_transfers"), orderBy("createdAt", "desc")) : null,
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "bs_transfers"), orderBy("createdAt", "desc"), limit(50)) : null,
         [firestore, user?.uid]
     );
     const { data: transfers } = useCollection<BsTransfer>(transfersCollection);
 
     const salesCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "sale_transactions") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "sale_transactions"), orderBy("transactionDate", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: sales } = useCollection<Sale>(salesCollection);
 
     const payrollCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "payroll_payments") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "payroll_payments"), orderBy("createdAt", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: payroll } = useCollection<PayrollPayment>(payrollCollection);
 
     const loansCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "loans") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "loans"), orderBy("createdAt", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: loans } = useCollection<Loan>(loansCollection);
 
     const expensesCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "expenses") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "expenses"), orderBy("createdAt", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: expenses } = useCollection<Expense>(expensesCollection);
@@ -139,7 +140,7 @@ function ExchangeContent() {
                     if (c.method === 'Efectivo USD') usdBalance -= c.amount;
                     else {
                         const method = mapBsMethod(c.method);
-                        if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= c.amount;
+                        if (bsBreakdown[method] !== undefined) breakdown[method] -= c.amount;
                     }
                 });
             }
@@ -186,7 +187,7 @@ function ExchangeContent() {
             if (ex.amountBs > 0) {
                 const method = mapBsMethod(ex.methodBs || 'Tarjeta / Pago Móvil');
                 if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= ex.amountBs;
-                else bsBreakdown['Tarjeta / Pago Móvil'] -= ex.amountBs;
+                else breakdown['Tarjeta / Pago Móvil'] -= ex.amountBs;
             }
         });
 

@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/page-header";
 import { useCollection, useFirebase, useMemoFirebase, setDocumentNonBlocking } from "@/firebase";
-import { collection, doc } from "firebase/firestore";
+import { collection, doc, query, orderBy, limit } from "firebase/firestore";
 import type { Sale, Product, RepairJob, Loan, CurrencyExchange, PaymentMethod, Expense, PayrollPayment } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
@@ -65,44 +65,45 @@ function TreasuryContent() {
     const currentInvPercent = localInvPerc !== null ? localInvPerc : (settings?.investmentPercentage ?? 30);
     const currentPartners = localPartners !== null ? localPartners : (settings?.partnersCount ?? 2);
 
+    // ACOTE DE CONSULTAS: limit(50) para proteger rendimiento
     const salesCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "sale_transactions") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "sale_transactions"), orderBy("transactionDate", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: sales, isLoading: salesLoading } = useCollection<Sale>(salesCollection);
 
     const productsCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "products") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "products"), orderBy("name"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: products, isLoading: productsLoading } = useCollection<Product>(productsCollection);
 
     const repairJobsCollection = useMemoFirebase(() =>
-        (firestore && user) ? collection(firestore, "users", user.uid, "repair_jobs") : null,
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "repair_jobs"), orderBy("createdAt", "desc"), limit(50)) : null,
         [firestore, user?.uid]
     );
     const { data: repairJobs, isLoading: repairsLoading } = useCollection<RepairJob>(repairJobsCollection);
 
     const exchangeCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "currency_exchanges") : null,
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "currency_exchanges"), orderBy("createdAt", "desc"), limit(50)) : null,
         [firestore, user?.uid]
     );
     const { data: exchanges, isLoading: exchangesLoading } = useCollection<CurrencyExchange>(exchangeCollection);
 
     const payrollCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "payroll_payments") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "payroll_payments"), orderBy("createdAt", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: payroll } = useCollection<PayrollPayment>(payrollCollection);
 
     const loansCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "loans") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "loans"), orderBy("createdAt", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: loans } = useCollection<Loan>(loansCollection);
 
     const expensesCollection = useMemoFirebase(() => 
-        (firestore && user) ? collection(firestore, "users", user.uid, "expenses") : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "expenses"), orderBy("createdAt", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: expenses } = useCollection<Expense>(expensesCollection);

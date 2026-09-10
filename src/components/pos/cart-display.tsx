@@ -9,7 +9,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { ScrollArea } from "../ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useFirebase, useDoc, useMemoFirebase, useCollection } from "@/firebase";
-import { doc, runTransaction, type DocumentSnapshot, collection, query, orderBy } from "firebase/firestore";
+import { doc, runTransaction, type DocumentSnapshot, collection, query, orderBy, increment } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
@@ -31,6 +31,7 @@ type CartDisplayProps = {
   onTogglePromo: (productId: string) => void;
   onToggleGift: (productId: string) => void;
   onHoldSale?: (name: string) => void;
+  onCheckoutSuccess?: (sale: Sale, consumedParts?: ReservedPart[]) => void;
   repairJobId?: string;
 };
 
@@ -195,7 +196,7 @@ function DiscountItemControl({ productId, currentDiscount, onApply }: { productI
     );
 }
 
-export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDiscount, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift, onHoldSale }: CartDisplayProps) {
+export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDiscount, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift, onHoldSale, onCheckoutSuccess }: CartDisplayProps) {
   const { firestore, user } = useFirebase();
   const { toast } = useToast();
   const { format: formatCurrency, getFinalPrice, getSymbol, convert, bcvRate, parallelRate } = useCurrency();
@@ -271,6 +272,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
       const realIncomeUSD = actualNetPaidInUSD * rateFactor;
 
       try {
+        const partsToNotify = activeRepairJob?.reservedParts || [];
+
         await runTransaction(firestore, async (transaction) => {
             // --- 1. PRIMERO: TODAS LAS LECTURAS (READS) ---
             const productIdsToGet = new Set<string>();
@@ -294,16 +297,17 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
 
             // --- 2. SEGUNDO: CÁLCULOS LÓGICOS ---
             let totalCostUSD = 0;
-            const stockDeductions = new Map<string, { stock: number, reserved: number }>();
+            const stockDeductions = new Map<string, { stock: number, reserved: number, salesCount: number }>();
 
             if (currentRepairJob?.reservedParts && hasRepairInCart) {
                 for (const part of currentRepairJob.reservedParts) {
                     totalCostUSD += (part.costPrice * part.quantity);
                     if (part.isManual) continue;
-                    const current = stockDeductions.get(part.productId) || { stock: 0, reserved: 0 };
+                    const current = stockDeductions.get(part.productId) || { stock: 0, reserved: 0, salesCount: 0 };
                     stockDeductions.set(part.productId, { 
                         stock: current.stock + part.quantity, 
-                        reserved: current.reserved + part.quantity 
+                        reserved: current.reserved + part.quantity,
+                        salesCount: current.salesCount + part.quantity
                     });
                 }
             }
@@ -319,10 +323,11 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                     totalCostUSD += (pSnap.data() as Product).costPrice * item.quantity;
                 }
 
-                const current = stockDeductions.get(item.productId) || { stock: 0, reserved: 0 };
+                const current = stockDeductions.get(item.productId) || { stock: 0, reserved: 0, salesCount: 0 };
                 stockDeductions.set(item.productId, { 
                     stock: current.stock + item.quantity, 
-                    reserved: current.reserved 
+                    reserved: current.reserved,
+                    salesCount: current.salesCount + item.quantity
                 });
             }
 
@@ -339,7 +344,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
 
                     transaction.update(pSnap.ref, { 
                         stockLevel: data.stockLevel - ded.stock,
-                        reservedStock: Math.max(0, (data.reservedStock || 0) - ded.reserved)
+                        reservedStock: Math.max(0, (data.reservedStock || 0) - ded.reserved),
+                        salesCount: increment(ded.salesCount)
                     });
                 }
             }
@@ -425,6 +431,10 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
             bcvRateAtTime: bcvRate,
             parallelRateAtTime: parallelRate
         } as Sale;
+
+        if (onCheckoutSuccess) {
+            onCheckoutSuccess(resultSale, partsToNotify);
+        }
 
         setCustomerName("");
         setCustomerID("");

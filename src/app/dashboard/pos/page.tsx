@@ -2,7 +2,7 @@
 
 import { ProductGrid } from "@/components/pos/product-grid";
 import { Suspense, useEffect, useState } from "react";
-import type { CartItem, Product, RepairJob, HeldSale } from "@/lib/types";
+import type { CartItem, Product, RepairJob, HeldSale, Sale, ReservedPart } from "@/lib/types";
 import { CartDisplay } from "@/components/pos/cart-display";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -30,7 +30,7 @@ function POSContent() {
         (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(200)) : null,
         [firestore, user?.uid]
     );
-    const { data: products, isLoading: productsLoading } = useCollection<Product>(productsCollection);
+    const { data: products, isLoading: productsLoading, mutate: mutateProducts } = useCollection<Product>(productsCollection);
     
     const heldSalesCollection = useMemoFirebase(() => 
         (firestore && user) ? collection(firestore, 'users', user.uid, 'held_sales') : null,
@@ -171,6 +171,47 @@ function POSContent() {
         }));
     };
 
+    const handleCheckoutSuccess = (sale: Sale, consumedParts?: ReservedPart[]) => {
+        // ACTUALIZACIÓN OPTIMISTA: Descontamos stock localmente para actualización instantánea
+        mutateProducts((currentProducts) => {
+            if (!currentProducts) return null;
+            
+            const productsMap = new Map(currentProducts.map(p => [p.id, { ...p }]));
+            let modified = false;
+
+            // 1. Descontar items vendidos directamente en el carrito
+            sale.items.forEach(item => {
+                if (item.isRepair || item.isCustom) return;
+                const p = productsMap.get(item.productId);
+                if (p) {
+                    p.stockLevel -= item.quantity;
+                    p.salesCount = (p.salesCount || 0) + item.quantity;
+                    modified = true;
+                }
+            });
+
+            // 2. Descontar repuestos de reparación (si fue una venta técnica)
+            if (consumedParts) {
+                consumedParts.forEach(part => {
+                    if (part.isManual) return;
+                    const p = productsMap.get(part.productId);
+                    if (p) {
+                        p.stockLevel -= part.quantity;
+                        // Liberamos el stock que estaba reservado
+                        p.reservedStock = Math.max(0, (p.reservedStock || 0) - part.quantity);
+                        p.salesCount = (p.salesCount || 0) + part.quantity;
+                        modified = true;
+                    }
+                });
+            }
+
+            return modified ? Array.from(productsMap.values()) : currentProducts;
+        }, false); // El parámetro false evita una re-validación inmediata innecesaria
+        
+        setActiveRepairJob(null);
+        localStorage.removeItem('mm_repair_draft');
+    };
+
     return (
         <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
              <header className="bg-white flex h-14 items-center gap-4 border-b px-4 sm:h-16 sm:px-6">
@@ -199,6 +240,7 @@ function POSContent() {
                         onTogglePromo={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isPromo: !i.isPromo } : i))}
                         onToggleGift={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isGift: !i.isGift } : i))}
                         onHoldSale={handleHoldSale}
+                        onCheckoutSuccess={handleCheckoutSuccess}
                         repairJobId={activeRepairJob?.id}
                     />
                 </div>

@@ -28,16 +28,16 @@ import type { Product, ComboItem, UserProfile, ProductUnit } from "@/lib/types";
 import { useState, type ReactNode, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebase, setDocumentNonBlocking, useCollection, useMemoFirebase, useDoc } from "@/firebase";
-import { doc, collection } from "firebase/firestore";
-import { Checkbox } from "../ui/checkbox";
-import { useCurrency } from "@/hooks/use-currency";
+import { doc, collection, arrayUnion, query, limit } from "firebase/firestore";
 import { Check, ChevronsUpDown, Calculator, Smartphone, Barcode, Tag, Scale, Lock, Percent, Landmark, Gift, BadgePercent, Sparkles, RefreshCcw } from "lucide-react";
 import { format } from "date-fns";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "../ui/checkbox";
+import { useCurrency } from "@/hooks/use-currency";
 
 const comboItemSchema = z.object({
   productId: z.string(),
@@ -69,6 +69,7 @@ const formSchema = z.object({
   isGiftable: z.boolean().default(false),
   hasIVA: z.boolean().default(false),
   createdAt: z.string(),
+  salesCount: z.coerce.number().default(0),
 });
 
 type ProductFormData = z.infer<typeof formSchema>;
@@ -80,6 +81,22 @@ interface ProductFormDialogProps {
     isOpen?: boolean;
     onOpenChange?: (open: boolean) => void;
     onSaved?: (product: Product) => void;
+}
+
+function generateSearchKeywords(name: string, sku: string, category: string, models: string[]) {
+    const keywords = new Set<string>();
+    const addTerms = (text: string) => {
+        if (!text) return;
+        const terms = text.toLowerCase().split(/[\s,.-/]+/).filter(t => t.length > 1);
+        terms.forEach(t => keywords.add(t));
+        const clean = text.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (clean.length > 1) keywords.add(clean);
+    };
+    addTerms(name);
+    addTerms(sku);
+    addTerms(category);
+    models.forEach(m => addTerms(m));
+    return Array.from(keywords);
 }
 
 export function ProductFormDialog({ product, children, productCount = 0, isOpen, onOpenChange, onSaved }: ProductFormDialogProps) {
@@ -99,17 +116,20 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   );
   const { data: profile } = useDoc<UserProfile>(profileRef);
 
-  const productsCollection = useMemoFirebase(() => 
-    (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, 
+  const inventorySettingsRef = useMemoFirebase(() => 
+    (firestore && user) ? doc(firestore, 'users', user.uid, 'settings', 'inventory') : null,
     [firestore, user?.uid]
   );
-  const { data: allProducts } = useCollection<Product>(productsCollection);
+  const { data: inventorySettings } = useDoc<any>(inventorySettingsRef);
 
   const categories = useMemo(() => {
-    if (!allProducts) return [];
-    const unique = Array.from(new Set(allProducts.map(p => p.category).filter(Boolean)));
-    return unique.sort();
-  }, [allProducts]);
+    if (inventorySettings?.categories && Array.isArray(inventorySettings.categories)) {
+      const list = [...inventorySettings.categories];
+      if (!list.includes("GENERAL")) list.push("GENERAL");
+      return list.sort();
+    }
+    return ["GENERAL"];
+  }, [inventorySettings]);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(formSchema),
@@ -137,6 +157,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
       isGiftable: false,
       hasIVA: false,
       createdAt: new Date().toISOString().split('T')[0],
+      salesCount: 0,
     },
   });
 
@@ -182,6 +203,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 promoPrice: 0, stockLevel: 1, reservedStock: 0, damagedStock: 0, lowStockThreshold: 1,
                 compatibleModels: "", isCombo: false, comboItems: [], isGiftable: false, hasIVA: false,
                 createdAt: new Date().toISOString().split('T')[0],
+                salesCount: 0,
             });
         }
     }
@@ -203,13 +225,23 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
     if (!firestore || !user || isSubmitting) return;
     setIsSubmitting(true);
     try {
+        const cat = values.category.toUpperCase().trim();
+        const modelsArray = values.compatibleModels ? values.compatibleModels.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [];
+        
         const finalValues = {
             ...values,
             name: values.name.toUpperCase().trim(),
-            category: values.category.toUpperCase().trim(),
+            category: cat,
             sku: values.sku.toUpperCase().trim(),
-            compatibleModels: values.compatibleModels ? values.compatibleModels.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [],
+            compatibleModels: modelsArray,
+            searchKeywords: generateSearchKeywords(values.name, values.sku, cat, modelsArray)
         };
+
+        if (inventorySettingsRef) {
+            setDocumentNonBlocking(inventorySettingsRef, {
+                categories: arrayUnion(cat)
+            }, { merge: true });
+        }
 
         const docId = product?.id || doc(collection(firestore, 'users', user.uid, 'products')).id;
         const productRef = doc(firestore, 'users', user.uid, 'products', docId);
@@ -219,7 +251,6 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
         
         toast({ title: isEditing ? "Producto Actualizado" : "Producto Añadido" });
         
-        // Optimistic Callback
         if (onSaved) onSaved(finalProduct as any);
         
         setIsSubmitting(false);

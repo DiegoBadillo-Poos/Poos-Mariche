@@ -76,7 +76,7 @@ function FiadosContent() {
         (firestore && user) ? query(collection(firestore, "users", user.uid, "fiados"), orderBy("createdAt", "desc")) : null,
         [firestore, user?.uid]
     );
-    const { data: fiados, isLoading } = useCollection<Fiado>(fiadosCollection);
+    const { data: fiados, isLoading, mutate: mutateFiados } = useCollection<Fiado>(fiadosCollection);
 
     const filteredFiados = useMemo(() => {
         if (!fiados) return [];
@@ -95,14 +95,27 @@ function FiadosContent() {
 
     const handleDeleteFiado = (id: string) => {
         if (!firestore || !user) return;
+        
+        // Optimistic delete
+        mutateFiados((prev) => prev?.filter(f => f.id !== id) || null);
+        
         deleteDocumentNonBlocking(doc(firestore, 'users', user.uid, 'fiados', id));
         toast({ title: "Registro eliminado", variant: "destructive" });
+    };
+
+    const handleFiadoAdded = (newFiado: Fiado) => {
+        mutateFiados((prev) => [newFiado as any, ...(prev || [])]);
+        setIsAddOpen(false);
+    };
+
+    const handleFiadoUpdated = (updatedFiado: Fiado) => {
+        mutateFiados((prev) => prev?.map(f => f.id === updatedFiado.id ? { ...f, ...updatedFiado } : f) || null);
     };
 
     return (
         <>
             <PageHeader title="Control de Fiados / Créditos">
-                <AddFiadoDialog onAdded={() => setIsAddOpen(false)} isOpen={isAddOpen} setIsOpen={setIsAddOpen} existingFiados={fiados || []}>
+                <AddFiadoDialog onAdded={handleFiadoAdded} isOpen={isAddOpen} setIsOpen={setIsAddOpen} existingFiados={fiados || []}>
                     <Button><PlusCircle className="mr-2 h-4 w-4" /> Nuevo Fiado</Button>
                 </AddFiadoDialog>
             </PageHeader>
@@ -240,9 +253,9 @@ function FiadosContent() {
                                                 <div className="flex justify-end gap-1.5">
                                                     {fiado.status === 'Pendiente' && (
                                                         <>
-                                                            <SetDeadlineDialog fiado={fiado} />
-                                                            <AddItemsToFiadoDialog fiado={fiado} />
-                                                            <CobrarFiadoDialog fiado={fiado} />
+                                                            <SetDeadlineDialog fiado={fiado} onUpdated={handleFiadoUpdated} />
+                                                            <AddItemsToFiadoDialog fiado={fiado} onUpdated={handleFiadoUpdated} />
+                                                            <CobrarFiadoDialog fiado={fiado} onUpdated={handleFiadoUpdated} />
                                                         </>
                                                     )}
                                                     <AdminAuthDialog onAuthorized={() => handleDeleteFiado(fiado.id!)}>
@@ -264,7 +277,7 @@ function FiadosContent() {
     );
 }
 
-function SetDeadlineDialog({ fiado }: { fiado: Fiado }) {
+function SetDeadlineDialog({ fiado, onUpdated }: { fiado: Fiado, onUpdated: (f: Fiado) => void }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
     const [open, setOpen] = useState(false);
@@ -272,6 +285,9 @@ function SetDeadlineDialog({ fiado }: { fiado: Fiado }) {
 
     const handleSave = () => {
         if (!firestore || !user || !fiado.id) return;
+        
+        onUpdated({ ...fiado, dueDate: date || undefined });
+        
         updateDocumentNonBlocking(doc(firestore, 'users', user.uid, 'fiados', fiado.id), {
             dueDate: date || null
         });
@@ -314,7 +330,7 @@ function SetDeadlineDialog({ fiado }: { fiado: Fiado }) {
     );
 }
 
-function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }: { children: React.ReactNode, onAdded: () => void, isOpen: boolean, setIsOpen: (v: boolean) => void, existingFiados: Fiado[] }) {
+function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }: { children: React.ReactNode, onAdded: (f: Fiado) => void, isOpen: boolean, setIsOpen: (v: boolean) => void, existingFiados: Fiado[] }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
     const { getFinalPrice } = useCurrency();
@@ -339,11 +355,6 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
         [firestore, user?.uid]
     );
     const { data: repairJobs } = useCollection<RepairJob>(repairJobsCollection);
-
-    const hasPendingFiado = useMemo(() => {
-        if (!customerID) return null;
-        return existingFiados.find(f => f.customerID === customerID && f.status === 'Pendiente');
-    }, [customerID, existingFiados]);
 
     const foundCustomer = useMemo(() => {
         if (!customerID || customerID.length < 5) return null;
@@ -396,6 +407,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
 
         setLoading(true);
         try {
+            const dataToSave: any = {};
             await runTransaction(firestore, async (transaction) => {
                 const productSnaps = new Map();
                 for(const item of selectedItems) {
@@ -410,7 +422,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     if (pDoc?.exists()) {
                         const currentStock = pDoc.data().stockLevel || 0;
                         if (currentStock < item.quantity) {
-                            throw new Error(`¡Conflicto de Inventario! Stock insuficiente para "${item.productName}". Alguien más podría haber modificado este producto.`);
+                            throw new Error(`Stock insuficiente para "${item.productName}".`);
                         }
                         transaction.update(pDoc.ref, { stockLevel: currentStock - item.quantity });
                     }
@@ -419,7 +431,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                 const totalCost = selectedItems.reduce((sum, i) => sum + (i.costPrice * i.quantity), 0);
                 const fiadosRef = collection(firestore, 'users', user.uid, 'fiados');
                 const newDoc = doc(fiadosRef);
-                const data = cleanObject({
+                const finalData = cleanObject({
                     id: newDoc.id,
                     customerID,
                     customerName,
@@ -432,14 +444,15 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     createdAt: new Date().toISOString(),
                     items: selectedItems
                 });
-                transaction.set(newDoc, data);
+                transaction.set(newDoc, finalData);
+                Object.assign(dataToSave, finalData);
             });
 
             toast({ title: "Fiado registrado" });
-            setIsOpen(false);
+            onAdded(dataToSave as Fiado);
             setCustomerID(""); setCustomerName(""); setCustomerPhone(""); setConcept(""); setTotalAmount(""); setSelectedItems([]);
         } catch (e: any) {
-            toast({ title: "Error en base de datos", description: e.message, variant: "destructive" });
+            toast({ title: "Error", description: e.message, variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -451,7 +464,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>Registrar Nuevo Crédito</DialogTitle>
-                    <DialogDescription>Los productos seleccionados se restarán del inventario inmediatamente de forma segura.</DialogDescription>
+                    <DialogDescription>Los productos seleccionados se restarán del inventario inmediatamente.</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -535,7 +548,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     </div>
                     <DialogFooter>
                         <Button type="submit" className="w-full" disabled={loading || selectedItems.length === 0}>
-                            {loading ? "PROCESANDO TRANSACCIÓN SEGURA..." : "Crear Fiado y Descontar Stock"}
+                            {loading ? "PROCESANDO..." : "Crear Fiado y Descontar Stock"}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -544,7 +557,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
     );
 }
 
-function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
+function AddItemsToFiadoDialog({ fiado, onUpdated }: { fiado: Fiado, onUpdated: (f: Fiado) => void }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
     const { getFinalPrice } = useCurrency();
@@ -580,6 +593,7 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
 
         setLoading(true);
         try {
+            const updatedData: any = {};
             await runTransaction(firestore, async (transaction) => {
                 const fiadoRef = doc(firestore, 'users', user.uid, 'fiados', fiado.id!);
                 const fiadoSnap = await transaction.get(fiadoRef);
@@ -599,7 +613,7 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
                     if (pDoc?.exists()) {
                         const currentStock = pDoc.data().stockLevel || 0;
                         if (currentStock < item.quantity) {
-                            throw new Error(`¡Error de Sincronización! No hay stock suficiente para "${item.productName}".`);
+                            throw new Error(`Stock insuficiente para "${item.productName}".`);
                         }
                         transaction.update(pDoc.ref, { stockLevel: currentStock - item.quantity });
                     }
@@ -612,19 +626,22 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
                 const newItems = [...(currentFiadoData.items || []), ...selectedItems];
                 const newConcept = currentFiadoData.concept + ", " + selectedItems.map(i => `${i.quantity}x ${i.productName}`).join(", ");
 
-                transaction.update(fiadoRef, cleanObject({
+                const changes = {
                     totalAmount: newTotal,
                     totalCost: newCost,
                     items: newItems,
                     concept: newConcept
-                }));
+                };
+                transaction.update(fiadoRef, cleanObject(changes));
+                Object.assign(updatedData, { ...currentFiadoData, ...changes });
             });
 
             toast({ title: "Cuenta actualizada correctamente" });
+            onUpdated(updatedData as Fiado);
             setOpen(false);
             setSelectedItems([]);
         } catch (e: any) {
-            toast({ title: "Error en la operación", description: e.message, variant: "destructive" });
+            toast({ title: "Error", description: e.message, variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -640,7 +657,7 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Añadir a la cuenta de {fiado.customerName}</DialogTitle>
-                    <DialogDescription>Los productos se sumarán a la deuda actual y se descontarán del inventario de forma atómica.</DialogDescription>
+                    <DialogDescription>Los productos se sumarán a la deuda actual y se descontarán del inventario.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <Popover open={searchOpen} onOpenChange={setSearchOpen}>
@@ -683,7 +700,7 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
                 </div>
                 <DialogFooter>
                     <Button onClick={handleUpdate} className="w-full" disabled={loading || selectedItems.length === 0}>
-                        {loading ? "SINCRONIZANDO CON INVENTARIO..." : "Confirmar y Añadir a Deuda"}
+                        {loading ? "PROCESANDO..." : "Confirmar y Añadir a Deuda"}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -691,10 +708,10 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
     );
 }
 
-function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
+function CobrarFiadoDialog({ fiado, onUpdated }: { fiado: Fiado, onUpdated: (f: Fiado) => void }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
-    const { format: formatCurrency, getSymbol, bcvRate, parallelRate, convert } = useCurrency();
+    const { format: formatCurrency, bcvRate, parallelRate, convert } = useCurrency();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [payments, setPayments] = useState<(Payment & { id: number })[]>([]);
@@ -759,12 +776,13 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
         const finalNetAbonoInUSD = totalAbonoInUSD - totalChangeGivenInUSD;
         
         if (finalNetAbonoInUSD <= 0) {
-            toast({ title: "Monto inválido", description: "El abono neto debe ser mayor a 0.", variant: "destructive" });
+            toast({ title: "Monto inválido", variant: "destructive" });
             return;
         }
 
         setLoading(true);
         try {
+            const updatedFiado: any = {};
             await runTransaction(firestore, async (transaction) => {
                 const fiadoRef = doc(firestore, 'users', user.uid, 'fiados', fiado.id!);
                 const fiadoSnap = await transaction.get(fiadoRef);
@@ -801,15 +819,22 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
                     amountPaid: Number(newPaid.toFixed(2)),
                     status: isFullyPaid ? 'Pagado' : 'Pendiente'
                 });
+                
+                Object.assign(updatedFiado, {
+                    ...currentFiado,
+                    amountPaid: Number(newPaid.toFixed(2)),
+                    status: isFullyPaid ? 'Pagado' : 'Pendiente'
+                });
             });
             
-            toast({ title: "Operación Registrada con Éxito" });
+            toast({ title: "Abono Registrado" });
+            onUpdated(updatedFiado as Fiado);
             setOpen(false);
             setPayments([]);
             setChangePayments([]);
             setIsGivingChange(false);
         } catch (e: any) {
-            toast({ title: "Error al procesar", description: e.message, variant: "destructive" });
+            toast({ title: "Error", description: e.message, variant: "destructive" });
         } finally {
             setLoading(false);
         }

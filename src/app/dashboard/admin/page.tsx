@@ -350,9 +350,10 @@ function AdminContent() {
     const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
     const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
 
+    // GATILLO DE SEGURIDAD: Solo ejecutamos si el usuario actual existe y es Admin (via SecurityGate)
     const usersCollection = useMemoFirebase(() => 
-        (firestore) ? query(collection(firestore, "users"), limit(100)) : null, 
-        [firestore]
+        (firestore && currentUser) ? query(collection(firestore, "users"), limit(100)) : null, 
+        [firestore, currentUser?.uid]
     );
     const { data: users, isLoading } = useCollection<UserProfile>(usersCollection);
 

@@ -30,13 +30,13 @@ import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
 import { Label } from "../ui/label";
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from "@/firebase";
-import { doc, runTransaction, query, orderBy, collection, type DocumentSnapshot } from "firebase/firestore";
+import { doc, runTransaction, query, orderBy, collection, type DocumentSnapshot, where, limit, getDocs } from "firebase/firestore";
 import { handlePrintAllTickets } from "./repair-ticket";
 import { User, Smartphone, Package, Search, Plus, Trash2, Loader2, DollarSign, Calculator, UserCheck, MapPin, Hammer, Minus, TicketPercent, CheckCircle2 } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { es } from "date-fns/locale";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
 import { ProductFormDialog } from "../inventory/product-form-dialog";
@@ -84,6 +84,11 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
   const [replenishProduct, setReplenishProduct] = useState<Product | null>(null);
   const [manualQuickAddOpen, setManualQuickAddOpen] = useState(false);
   
+  // Estados para búsqueda por demanda de productos
+  const [productSearch, setProductSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false);
+  
   const open = isOpen !== undefined ? isOpen : internalOpen;
   const setOpen = onOpenChange !== undefined ? onOpenChange : setInternalOpen;
 
@@ -93,6 +98,9 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
   
   const isInitialized = useRef(false);
   const isClosingViaMinimize = useRef(false);
+
+  // Estado para el autocompletado de cliente bajo demanda
+  const [lookedUpCustomer, setLookedUpCustomer] = useState<any>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -116,26 +124,73 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
   );
   const { data: profile } = useDoc<UserProfile>(profileRef);
 
-  const productsCol = useMemoFirebase(() => 
-    (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, 
-    [firestore, user?.uid]
-  );
-  const { data: products } = useCollection<Product>(productsCol);
+  // EFECTO DE BÚSQUEDA DE PRODUCTOS POR DEMANDA (ON-DEMAND)
+  useEffect(() => {
+    if (!firestore || !user || !open) return;
 
-  const repairsCol = useMemoFirebase(() => 
-    (firestore && user) ? query(collection(firestore, 'users', user.uid, 'repair_jobs'), orderBy('createdAt', 'desc')) : null,
-    [firestore, user?.uid]
-  );
-  const { data: allRepairJobs } = useCollection<RepairJob>(repairsCol);
+    const fetchProducts = async () => {
+        setIsSearchingProducts(true);
+        try {
+            let q;
+            const productsRef = collection(firestore, 'users', user.uid, 'products');
+            
+            if (productSearch.trim()) {
+                q = query(
+                    productsRef, 
+                    where('searchKeywords', 'array-contains', productSearch.toLowerCase().trim()), 
+                    limit(10)
+                );
+            } else {
+                q = query(productsRef, limit(15));
+            }
+            
+            const snap = await getDocs(q);
+            setSearchResults(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Product));
+        } catch (e) {
+            console.error("Error searching products:", e);
+        } finally {
+            setIsSearchingProducts(false);
+        }
+    };
+
+    const debounce = setTimeout(fetchProducts, 300);
+    return () => clearTimeout(debounce);
+  }, [productSearch, firestore, user, open]);
 
   const reservedParts = form.watch("reservedParts") as (ReservedPart & { isPromo?: boolean, isWarranty?: boolean, isManual?: boolean, isConsumed?: boolean })[];
   const watchedID = form.watch("customerID");
   const watchedName = form.watch("customerName");
 
-  const foundCustomer = useMemo(() => {
-    if (!watchedID || watchedID.length < 5 || !allRepairJobs) return null;
-    return allRepairJobs.find(job => job.customerID?.toUpperCase().trim() === watchedID.toUpperCase().trim());
-  }, [watchedID, allRepairJobs]);
+  // EFECTO DE BÚSQUEDA DE CLIENTE BAJO DEMANDA
+  useEffect(() => {
+    const fetchCustomer = async () => {
+      if (!firestore || !user || !watchedID || watchedID.length < 5 || isSubmitting) {
+        setLookedUpCustomer(null);
+        return;
+      }
+      
+      try {
+        const q = query(
+          collection(firestore, 'users', user.uid, 'repair_jobs'),
+          where('customerID', '==', watchedID.toUpperCase().trim()),
+          limit(1)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setLookedUpCustomer(snap.docs[0].data());
+        } else {
+          setLookedUpCustomer(null);
+        }
+      } catch (e) {
+        setLookedUpCustomer(null);
+      }
+    };
+
+    const debounce = setTimeout(fetchCustomer, 600);
+    return () => clearTimeout(debounce);
+  }, [watchedID, firestore, user, isSubmitting]);
+
+  const foundCustomer = lookedUpCustomer;
 
   const handleApplyCustomerData = () => {
     if (foundCustomer) {
@@ -173,14 +228,14 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
             price = part.isPromo ? (part.manualPriceOffer || 0) : (part.manualPrice || 0);
             if (price === 0) price = getDynamicPrice(part.costPrice);
         } else {
-            const product = products?.find(p => p.id === part.productId);
+            const product = searchResults.find(p => p.id === part.productId) || part as unknown as Product;
             if (product) {
                 price = (part.isPromo && product.promoPrice) ? product.promoPrice : getFinalPrice(product);
             } else price = getDynamicPrice(part.costPrice);
         }
         return sum + (price * part.quantity);
     }, 0);
-  }, [reservedParts, products, getFinalPrice, getDynamicPrice]);
+  }, [reservedParts, searchResults, getFinalPrice, getDynamicPrice]);
 
   const estimatedTotal = partsTotalForClient;
   const currentPaid = repairJob?.amountPaid || 0;
@@ -370,7 +425,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
             return finalData as RepairJob;
         });
 
-        // Mutar el estado local optimísticamente si se provee callback
         if (onSaved) onSaved(finalJob);
 
         localStorage.removeItem(DRAFT_KEY);
@@ -490,13 +544,30 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="p-0 w-[280px] sm:w-[350px]" align="end">
-                                            <Command><CommandInput placeholder="BUSCAR REPUESTO..." className="h-9"/><CommandList><CommandEmpty>Sin resultados.</CommandEmpty><CommandGroup>
-                                                {(products || []).filter(p => !p.isCombo).map(p => (
-                                                    <CommandItem key={p.id} onSelect={() => handleAddPartFromInventory(p)} className="flex justify-between items-center text-xs">
-                                                        <span className="font-bold uppercase truncate max-w-[150px]">{p.name}</span>
-                                                        <Badge variant="secondary" className="text-[8px] h-4">{p.stockLevel - (p.reservedStock || 0)} DISP.</Badge>
-                                                    </CommandItem>
-                                                ))}</CommandGroup></CommandList></Command>
+                                            <Command shouldFilter={false}>
+                                                <CommandInput 
+                                                    placeholder="BUSCAR REPUESTO..." 
+                                                    className="h-9"
+                                                    onValueChange={setProductSearch}
+                                                />
+                                                <CommandList>
+                                                    {isSearchingProducts && (
+                                                        <div className="p-4 text-center">
+                                                            <Loader2 className="h-4 w-4 animate-spin mx-auto text-primary" />
+                                                            <p className="text-[10px] font-bold text-muted-foreground mt-2 uppercase">Buscando...</p>
+                                                        </div>
+                                                    )}
+                                                    <CommandEmpty>{!isSearchingProducts && "Sin resultados."}</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {searchResults.map((p) => (
+                                                            <CommandItem key={p.id} onSelect={() => handleAddPartFromInventory(p)} className="flex justify-between items-center text-xs">
+                                                                <span className="font-bold uppercase truncate max-w-[150px]">{p.name}</span>
+                                                                <Badge variant="secondary" className="text-[8px] h-4">{p.stockLevel - (p.reservedStock || 0)} DISP.</Badge>
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
                                         </PopoverContent>
                                     </Popover>
                                 )}
@@ -510,7 +581,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
                                 </p>
                             )}
                             {reservedParts.map((part) => {
-                                const pData = products?.find(p => p.id === part.productId);
+                                const pData = searchResults.find(p => p.id === part.productId);
                                 let price = 0;
                                 if (part.isManual) {
                                     price = part.isPromo ? (part.manualPriceOffer || 0) : (part.manualPrice || 0);
@@ -681,7 +752,7 @@ function ManualQuickAddDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean
                                     type="number" 
                                     value={priceOffer} 
                                     onChange={(e) => setPriceOffer(e.target.value)} 
-                                    className="pl-7 h-9 border-green-200 font-black text-base"
+                                    className="pl-7 h-9 border-blue-200 font-black text-base"
                                     placeholder="0.00"
                                 />
                             </div>

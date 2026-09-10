@@ -52,7 +52,7 @@ function ExpensesContent() {
         (firestore && user) ? query(collection(firestore, "users", user.uid, "expenses"), orderBy("createdAt", "desc")) : null,
         [firestore, user?.uid]
     );
-    const { data: expenses, isLoading } = useCollection<Expense>(expensesCollection);
+    const { data: expenses, isLoading, mutate: mutateExpenses } = useCollection<Expense>(expensesCollection);
 
     const filteredExpenses = useMemo(() => {
         if (!expenses) return [];
@@ -84,8 +84,17 @@ function ExpensesContent() {
 
     const handleDelete = (id: string) => {
         if (!firestore || !user || !id) return;
+        
+        // Optimistic delete
+        mutateExpenses((prev) => prev?.filter(ex => ex.id !== id) || null);
+        
         deleteDocumentNonBlocking(doc(firestore, 'users', user.uid, 'expenses', id));
         toast({ title: "Gasto eliminado", variant: "destructive" });
+    };
+
+    const handleExpenseAdded = (newExpense: Expense) => {
+        mutateExpenses((prev) => [newExpense as any, ...(prev || [])]);
+        setIsAddOpen(false);
     };
 
     return (
@@ -108,7 +117,7 @@ function ExpensesContent() {
                         </PopoverContent>
                     </Popover>
                     
-                    <AddExpenseDialog onAdded={() => setIsAddOpen(false)} isOpen={isAddOpen} setIsOpen={setIsAddOpen}>
+                    <AddExpenseDialog onAdded={handleExpenseAdded} isOpen={isAddOpen} setIsOpen={setIsAddOpen}>
                         <Button size="sm" className="shadow-lg"><PlusCircle className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Registrar</span> Gasto</Button>
                     </AddExpenseDialog>
                 </div>
@@ -235,7 +244,7 @@ function ExpensesContent() {
     );
 }
 
-function AddExpenseDialog({ children, onAdded, isOpen, setIsOpen }: { children: React.ReactNode, onAdded: () => void, isOpen: boolean, setIsOpen: (v: boolean) => void }) {
+function AddExpenseDialog({ children, onAdded, isOpen, setIsOpen }: { children: React.ReactNode, onAdded: (expense: Expense) => void, isOpen: boolean, setIsOpen: (v: boolean) => void }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
     const { bcvRate } = useCurrency();
@@ -266,7 +275,7 @@ function AddExpenseDialog({ children, onAdded, isOpen, setIsOpen }: { children: 
             await setDocumentNonBlocking(newDoc, data, { merge: true });
             toast({ title: "Gasto Registrado" });
             setDescription(""); setAmountUSD(""); setAmountBs("");
-            onAdded();
+            onAdded(data);
         } catch (e) {
             toast({ title: "Error al registrar", variant: "destructive" });
         } finally {

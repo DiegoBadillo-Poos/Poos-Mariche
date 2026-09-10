@@ -29,6 +29,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
     }
 
     const syncProfileAndSession = async () => {
+      // VALIDACIÓN ESTRICTA DE SEGURIDAD
+      if (!user || !user.uid) return;
+
       try {
         await user.getIdToken(true);
 

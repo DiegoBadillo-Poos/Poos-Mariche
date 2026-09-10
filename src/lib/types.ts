@@ -21,6 +21,7 @@ export type Product = {
   damagedStock: number;
   lowStockThreshold: number;
   compatibleModels?: string[];
+  searchKeywords?: string[];
   isCombo?: boolean;
   comboItems?: ComboItem[];
   isGiftable?: boolean;
@@ -33,6 +34,7 @@ export type Product = {
   discountAmount?: number;
   unit: ProductUnit;
   createdAt?: string;
+  salesCount?: number; // Contador acumulado de ventas para análisis rápido
 };
 
 export type ReservedPart = {
