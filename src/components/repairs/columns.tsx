@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { RepairFormDialog } from "./repair-form-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog"
+import { useDashboardStore } from "@/contexts/dashboard-context"
 
 const repairStatuses: RepairStatus[] = ['Pendiente', 'Pagado', 'Completado', 'Garantía'];
 
@@ -174,6 +175,7 @@ function RepairHistoryDialog({ repairJob, children }: { repairJob: RepairJob, ch
 const ActionsCell = ({ repairJob, table }: { repairJob: RepairJob, table: any }) => {
     const { toast } = useToast();
     const { firestore, user } = useFirebase();
+    const { removeCachedItem } = useDashboardStore();
     const router = useRouter();
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const { bcvRate, parallelRate } = useCurrency();
@@ -197,11 +199,8 @@ const ActionsCell = ({ repairJob, table }: { repairJob: RepairJob, table: any })
         if (!firestore || !repairJob.id || !user) return;
         
         try {
-            // OPTIMISTIC DELETE
-            const mutate = (table.options.meta as any)?.mutate;
-            if (mutate) {
-                mutate((prev: any) => prev?.filter((j: any) => j.id !== repairJob.id) || null);
-            }
+            // ELIMINACIÓN GLOBAL INSTANTÁNEA
+            removeCachedItem(repairJob.id);
 
             await runTransaction(firestore, async (transaction) => {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id!);
@@ -354,6 +353,10 @@ const ActionsCell = ({ repairJob, table }: { repairJob: RepairJob, table: any })
                 </DropdownMenuContent>
             </DropdownMenu>
 
+            <RepairFormDialog repairJob={repairJob} onSaved={handleOptimisticUpdate}>
+                <button id={`edit-trigger-${repairJob.id}`} style={{ display: 'none' }}></button>
+            </RepairFormDialog>
+
              <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -372,6 +375,7 @@ const ActionsCell = ({ repairJob, table }: { repairJob: RepairJob, table: any })
 const StatusCell = ({ repairJob, table }: { repairJob: RepairJob, table: any }) => {
     const { toast } = useToast();
     const { firestore, user } = useFirebase();
+    const { updateCachedItem } = useDashboardStore();
     const [isUpdating, setIsUpdating] = useState(false);
 
     const handleStatusChange = async (newStatus: RepairStatus) => {
@@ -420,11 +424,8 @@ const StatusCell = ({ repairJob, table }: { repairJob: RepairJob, table: any }) 
                     updateData.reservedParts = [];
                 }
 
-                // OPTIMISTIC UPDATE
-                const mutate = (table.options.meta as any)?.mutate;
-                if (mutate) {
-                    mutate((prev: any) => prev?.map((j: any) => j.id === repairJob.id ? { ...j, ...updateData } : j) || null);
-                }
+                // ACTUALIZACIÓN GLOBAL INSTANTÁNEA (0ms)
+                updateCachedItem(repairJob.id!, updateData);
 
                 transaction.update(jobRef, updateData);
             });

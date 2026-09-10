@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { useDashboardStore } from "@/contexts/dashboard-context";
 
 type CartDisplayProps = {
   cart: CartItem[];
@@ -200,6 +201,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
   const { firestore, user } = useFirebase();
   const { toast } = useToast();
   const { format: formatCurrency, getFinalPrice, getSymbol, convert, bcvRate, parallelRate } = useCurrency();
+  const { updateCachedItem } = useDashboardStore();
   
   const [customerName, setCustomerName] = useState("");
   const [customerID, setCustomerID] = useState("");
@@ -273,6 +275,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
 
       try {
         const partsToNotify = activeRepairJob?.reservedParts || [];
+        let repairUpdateForCache: any = null;
 
         await runTransaction(firestore, async (transaction) => {
             // --- 1. PRIMERO: TODAS LAS LECTURAS (READS) ---
@@ -375,7 +378,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                 const newPaidTotal = (currentRepairJob.amountPaid || 0) + paidToRepair;
                 const isFullyPaid = newPaidTotal >= (newEstimatedCost - 0.01);
 
-                transaction.update(jobRef, { 
+                repairUpdateForCache = { 
                     estimatedCost: Number(newEstimatedCost.toFixed(2)),
                     amountPaid: Number(newPaidTotal.toFixed(2)), 
                     isPaid: isFullyPaid,
@@ -383,7 +386,9 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                     partsConsumed: true,
                     consumedParts: [...(currentRepairJob.consumedParts || []), ...(currentRepairJob.reservedParts || [])],
                     reservedParts: []
-                });
+                };
+
+                transaction.update(jobRef, repairUpdateForCache);
             }
 
             transaction.set(statsRef, {
@@ -411,6 +416,11 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
 
             transaction.set(saleRef, saleData);
         });
+
+        // ACTUALIZACIÓN GLOBAL DE CACHÉ (Sincronización POS -> Reparaciones)
+        if (repairJobId && repairUpdateForCache) {
+            updateCachedItem(repairJobId, repairUpdateForCache);
+        }
 
         toast({ title: totalPaidInUSD < total - 0.01 ? "Abono Registrado Correctamente" : "Venta Completada con Éxito" });
         
