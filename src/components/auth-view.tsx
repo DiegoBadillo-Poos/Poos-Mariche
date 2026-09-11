@@ -39,15 +39,13 @@ export function AuthView() {
       // GENERACIÓN DE SESIÓN ÚNICA ATÓMICA
       const newSessionId = crypto.randomUUID();
       
-      // 1. Guardamos localmente primero para que el layout lo reconozca de inmediato
+      // 1. Guardamos localmente DE INMEDIATO
       localStorage.setItem(SESSION_KEY, newSessionId);
 
       const profileRef = doc(firestore, 'users', user.uid);
       const profileSnap = await getDoc(profileRef);
       
       // 2. Actualizamos Firestore con el nuevo ID de sesión
-      // El layout.tsx detectará este cambio via onSnapshot y lo ignorará localmente 
-      // gracias a metadata.hasPendingWrites.
       await setDoc(profileRef, {
         uid: user.uid,
         email: user.email,
@@ -64,8 +62,7 @@ export function AuthView() {
         })
       }, { merge: true });
 
-      // No necesitamos redirigir manualmente, el cambio de estado 'user' en useFirebase
-      // disparará el renderizado del Dashboard en layout.tsx.
+      // No necesitamos redirigir, el cambio de estado 'user' activará el Dashboard
     } catch (error: any) {
       console.error("Auth error:", error);
       
