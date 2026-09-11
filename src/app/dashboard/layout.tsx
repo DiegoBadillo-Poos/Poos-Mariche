@@ -9,7 +9,7 @@ import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Lock, LogOut, Smartphone, MessageCircle } from 'lucide-react';
+import { AlertTriangle, Lock, LogOut, MessageCircle } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { isAfter, parseISO, differenceInMinutes } from 'date-fns';
 import { GlobalAnnouncement } from '@/components/dashboard/global-announcement';
@@ -33,7 +33,6 @@ function LicenseExpiredScreen({ profile }: { profile: UserProfile | null }) {
     const { auth } = useFirebase();
     const whatsappNumber = "584241765136";
     
-    // Determinamos si es una cuenta nueva (registrada hace poco) o una suspensión manual
     const isNewAccount = profile && profile.createdAt && 
                          differenceInMinutes(new Date(), parseISO(profile.createdAt)) < 1440 && 
                          profile.licenseStatus === 'expired';
@@ -45,8 +44,8 @@ function LicenseExpiredScreen({ profile }: { profile: UserProfile | null }) {
     );
     
     const handleSignOut = () => {
-        localStorage.removeItem('mm_session_id');
-        sessionStorage.removeItem('mm_active_session_id');
+        sessionStorage.removeItem('mm_session_id');
+        sessionStorage.removeItem('mm_security_unlocked');
         auth && signOut(auth);
     };
 
@@ -92,10 +91,6 @@ function LicenseExpiredScreen({ profile }: { profile: UserProfile | null }) {
                             <LogOut className="w-4 h-4 mr-2" /> Cerrar Sesión
                         </Button>
                     </div>
-                    
-                    <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">
-                        POS Mariche v1.2 — Gestión Blindada
-                    </p>
                 </CardContent>
             </Card>
         </div>
@@ -125,7 +120,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       );
   }
 
-  // Lógica de validación de Licencia Estricta
   const isExpired = profile && 
                     !profile.isAdmin && 
                     (profile.licenseStatus === 'expired' || (profile.licenseExpiry && isAfter(new Date(), parseISO(profile.licenseExpiry))));

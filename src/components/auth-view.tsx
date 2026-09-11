@@ -9,9 +9,12 @@ import { Label } from "./ui/label";
 import { AppLogo } from "./icons";
 import { Loader2, Mail, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+
+const SESSION_KEY = 'mm_session_id';
 
 export function AuthView() {
-  const { auth } = useFirebase();
+  const { auth, firestore } = useFirebase();
   const { toast } = useToast();
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -20,31 +23,55 @@ export function AuthView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
+    if (!auth || !firestore) return;
     
     setIsLoading(true);
     try {
+      let userCredential;
       if (isLogin) {
-        await initiateEmailSignIn(auth, email, password);
+        userCredential = await initiateEmailSignIn(auth, email, password);
       } else {
-        await initiateEmailSignUp(auth, email, password);
+        userCredential = await initiateEmailSignUp(auth, email, password);
       }
-      // Nota: El redireccionamiento ocurre automáticamente gracias al onAuthStateChanged en layout.tsx
+
+      const user = userCredential.user;
+      
+      // GENERACIÓN DE SESIÓN ÚNICA (SOBREESCRITURA DIRECTA)
+      const newSessionId = crypto.randomUUID();
+      sessionStorage.setItem(SESSION_KEY, newSessionId);
+
+      const profileRef = doc(firestore, 'users', user.uid);
+      const profileSnap = await getDoc(profileRef);
+      
+      // Actualizamos Firestore con el nuevo ID de sesión antes de redirigir
+      await setDoc(profileRef, {
+        uid: user.uid,
+        email: user.email,
+        lastSessionId: newSessionId,
+        updatedAt: new Date().toISOString(),
+        ...( !profileSnap.exists() && {
+            createdAt: new Date().toISOString(),
+            licenseStatus: 'expired', // Cuentas nuevas nacen suspendidas para activación manual
+            enabledModules: ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis', 'fiados', 'inventory_aging', 'loans', 'exchange', 'payroll', 'treasury'],
+            lockedModules: [],
+            isPinRequired: false,
+            businessRIF: "",
+            businessAddress: ""
+        })
+      }, { merge: true });
+
+      // El redireccionamiento ocurre por el cambio de estado en RootLayout
     } catch (error: any) {
       console.error("Auth error:", error);
       
       let message = "Ha ocurrido un error inesperado.";
       
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        message = "El correo o la contraseña son incorrectos. Por favor, verifícalos.";
+        message = "El correo o la contraseña son incorrectos.";
       } else if (error.code === 'auth/email-already-in-use') {
-        message = "Este correo ya está registrado en el sistema.";
-      } else if (error.code === 'auth/invalid-email') {
-        message = "El formato del correo electrónico no es válido.";
+        message = "Este correo ya está registrado.";
       } else if (error.code === 'auth/weak-password') {
-        message = "La contraseña debe tener al menos 6 caracteres.";
-      } else if (error.code === 'auth/too-many-requests') {
-        message = "Demasiados intentos fallidos. Tu cuenta ha sido bloqueada temporalmente. Inténtalo más tarde.";
+        message = "La contraseña es muy corta.";
       }
 
       toast({
@@ -68,8 +95,8 @@ export function AuthView() {
           </CardTitle>
           <CardDescription>
             {isLogin 
-              ? "Ingresa tus credenciales para acceder a tu base de datos." 
-              : "Crea tu cuenta corporativa para empezar a gestionar tu negocio."}
+              ? "Ingresa tus credenciales para acceder." 
+              : "Crea tu cuenta corporativa para empezar."}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>

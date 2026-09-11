@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -98,7 +99,6 @@ function AnnouncementEditor() {
         };
 
         try {
-            // Guardamos y esperamos la confirmación de la nube
             await setDocumentNonBlocking(announcementRef, newData, { merge: true });
             toast({ title: "Comunicado Publicado", description: "Todos los negocios verán este mensaje ahora." });
         } catch (e) {
@@ -350,7 +350,7 @@ function AdminContent() {
     const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
     const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
 
-    // GATILLO DE SEGURIDAD: Solo ejecutamos si el usuario actual existe y es Admin (via SecurityGate)
+    // GATILLO DE SEGURIDAD Y CACHE (0 Lecturas al navegar gracias al useCollection global)
     const usersCollection = useMemoFirebase(() => 
         (firestore && currentUser) ? query(collection(firestore, "users"), limit(100)) : null, 
         [firestore, currentUser?.uid]

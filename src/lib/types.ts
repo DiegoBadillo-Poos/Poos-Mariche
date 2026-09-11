@@ -191,6 +191,7 @@ export type CartItem = {
   isCustom?: boolean;
   customPrice?: number;
   customCostPrice?: number;
+  costPrice?: number; // Estandarizado para persistencia en venta
   discount?: number;
 };
 
@@ -222,6 +223,7 @@ export type Sale = {
   subtotal: number;
   discount: number;
   totalAmount: number;
+  costPrice: number; // Costo total estandarizado para la transacción
   paymentMethod: string;
   transactionDate: string;
   payments: Payment[];

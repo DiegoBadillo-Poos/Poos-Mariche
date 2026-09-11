@@ -140,7 +140,6 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
             const itemsTotalBillable = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
             const paymentRatio = itemsTotalBillable > 0 ? totalCollectedNominal / itemsTotalBillable : 1;
 
-            // AJUSTE DE VALOR REAL (REPOSICIÓN) PARA RENTABILIDAD
             const saleBcv = s.bcvRateAtTime || settings.bcvRate;
             const saleParallel = s.parallelRateAtTime || settings.parallelRate;
             const isSalePromo = s.items.some(i => i.isPromo);
@@ -148,7 +147,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
 
             s.items.forEach(item => {
                 const nominalItemRevenue = (item.price * item.quantity) * paymentRatio;
-                const itemRevenue = nominalItemRevenue * rateFactor; // RECAUDACIÓN REAL AJUSTADA
+                const itemRevenue = nominalItemRevenue * rateFactor;
                 
                 let totalOriginalCost = 0;
                 let key = item.productId;
@@ -156,11 +155,14 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                 let isRepair = !!item.isRepair;
                 let isWarranty = !!item.isWarranty;
 
-                // PREFERIMOS EL COSTO GUARDADO EN EL ITEM PARA EVITAR LECTURAS EN CERO
-                if (item.costPrice !== undefined) {
-                    totalOriginalCost = item.costPrice * item.quantity * paymentRatio;
+                // --- MOTOR DE RESCATE HÍBRIDO ---
+                const persistedCost = item.costPrice ?? item.customCostPrice;
+
+                if (persistedCost !== undefined && persistedCost !== null && persistedCost !== 0) {
+                    // Caso A: Venta nueva con costo congelado
+                    totalOriginalCost = persistedCost * item.quantity * paymentRatio;
                 } else {
-                    // FALLBACK: Si es una venta vieja sin costPrice, buscamos en RAM (puede ser cero si no se encuentra)
+                    // Caso B: Venta antigua o sin costo - Rescate desde Memoria Global (RAM)
                     if (item.isRepair) {
                         key = `repair-${s.repairJobId || item.productId}`;
                         const repair = repairJobs.find(rj => rj.id === (s.repairJobId || item.productId));
@@ -177,12 +179,19 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                             const costRatio = fiado.totalAmount > 0 ? (fiado.totalCost || 0) / fiado.totalAmount : 0;
                             totalOriginalCost = nominalItemRevenue * costRatio;
                         }
-                    } else if (item.isCustom) {
-                        key = `custom-${item.name}`;
-                        totalOriginalCost = (item.customCostPrice || 0) * item.quantity * paymentRatio;
                     } else {
-                        const product = products.find(p => p.id === item.productId);
-                        totalOriginalCost = (product?.costPrice || 0) * item.quantity * paymentRatio;
+                        // Lookup en RAM por ID, SKU o Nombre (Blindaje histórico)
+                        const matchedProduct = products.find(p => 
+                            p.id === item.productId || 
+                            p.sku === item.productId || 
+                            p.name === item.name
+                        );
+                        if (matchedProduct) {
+                            const unitCost = matchedProduct.costPrice ?? 0;
+                            totalOriginalCost = unitCost * item.quantity * paymentRatio;
+                        } else {
+                            totalOriginalCost = 0; // Si no hay referencia, el costo es 0 (Peor caso)
+                        }
                     }
                 }
 

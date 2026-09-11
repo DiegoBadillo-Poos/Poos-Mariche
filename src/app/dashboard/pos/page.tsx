@@ -16,6 +16,7 @@ import { HeldSalesSheet } from "@/components/pos/held-sales-sheet";
 import { PriceCalculatorDialog } from "@/components/tools/price-calculator-dialog";
 import { CustomItemDialog } from "@/components/pos/custom-item-dialog";
 import { SecurityGate } from "@/components/security-gate";
+import { useDashboardStore } from "@/contexts/dashboard-context";
 
 function POSContent() {
     const { firestore, user, isUserLoading } = useFirebase();
@@ -24,6 +25,7 @@ function POSContent() {
     const router = useRouter();
     const [cart, setCart] = useState<CartItem[]>([]);
     const [activeRepairJob, setActiveRepairJob] = useState<RepairJob | null>(null);
+    const { addItemToCache } = useDashboardStore();
 
     // ESTANDARIZADO: Límite 200 productos para compartir cache global
     const productsCollection = useMemoFirebase(() => 
@@ -118,7 +120,7 @@ function POSContent() {
             return [...prev, { 
                 productId: product.id!, 
                 name: product.name, 
-                quantity: 1,
+                quantity: 1, 
                 isPromo: !!(product.promoPrice && product.promoPrice > 0),
                 discount: discountToApply
             }];
@@ -171,6 +173,10 @@ function POSContent() {
     };
 
     const handleCheckoutSuccess = (sale: Sale, consumedParts?: ReservedPart[]) => {
+        // 1. INYECCIÓN ATÓMICA EN REPORTE DE VENTAS (0ms)
+        addItemToCache('sale_transactions', sale);
+
+        // 2. ACTUALIZACIÓN DE STOCK EN MEMORIA
         mutateProducts((currentProducts) => {
             if (!currentProducts) return null;
             const productsMap = new Map(currentProducts.map(p => [p.id, { ...p }]));

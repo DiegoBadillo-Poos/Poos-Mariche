@@ -22,20 +22,6 @@ import { Label } from "../ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useDashboardStore } from "@/contexts/dashboard-context";
 
-type CartDisplayProps = {
-  cart: CartItem[];
-  allProducts: Product[];
-  onUpdateQuantity: (productId: string, quantity: number) => void;
-  onUpdateDiscount: (productId: string, discount: number) => void;
-  onRemoveItem: (productId: string, isRepair?: boolean) => void;
-  onClearCart: () => void;
-  onTogglePromo: (productId: string) => void;
-  onToggleGift: (productId: string) => void;
-  onHoldSale?: (name: string) => void;
-  onCheckoutSuccess?: (sale: Sale, consumedParts?: ReservedPart[]) => void;
-  repairJobId?: string;
-};
-
 function generateSaleId() {
     const date = new Date();
     return `S-${format(date, "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -263,13 +249,14 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
 
       const saleId = generateSaleId();
       
-      // CAPTURA DE COSTO EN CALIENTE: Guardamos el costo en cada item para auditoría histórica
+      // BLINDAJE DE COSTOS: Captura obligatoria de costPrice en el momento de la venta
       const cartWithPrices = cart.map(item => {
           const product = allProducts.find(p => p.id === item.productId);
+          const finalCost = item.isCustom ? (item.customCostPrice || 0) : (product?.costPrice || 0);
           return { 
               ...item, 
               price: getPrice(item),
-              costPrice: item.isCustom ? (item.customCostPrice || 0) : (product?.costPrice || 0)
+              costPrice: finalCost
           };
       });
 
@@ -286,6 +273,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
       try {
         const partsToNotify = activeRepairJob?.reservedParts || [];
         let repairUpdateForCache: any = null;
+        let finalGlobalTransactionCost = 0;
 
         await runTransaction(firestore, async (transaction) => {
             // --- 1. PRIMERO: TODAS LAS LECTURAS (READS) ---
@@ -344,6 +332,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                 });
             }
 
+            finalGlobalTransactionCost = totalCostUSD;
             const profitUSD = realIncomeUSD - totalCostUSD;
 
             // --- 3. TERCERO: TODAS LAS ESCRITURAS (WRITES) ---
@@ -414,6 +403,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
                 customerName: customerName || null,
                 customerID: customerID || null,
                 subtotal: total, discount: 0, totalAmount: total,
+                costPrice: Number(totalCostUSD.toFixed(2)), // STANDARDIZED costPrice persists here
                 paymentMethod: payments.map(p => p.method).join(', '),
                 transactionDate: new Date().toISOString(),
                 payments, status: 'completed',
@@ -442,6 +432,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
             subtotal: total, 
             discount: 0, 
             totalAmount: total, 
+            costPrice: finalGlobalTransactionCost, // Pass standardized cost back to caller
             payments, 
             transactionDate: new Date().toISOString(), 
             status: 'completed',

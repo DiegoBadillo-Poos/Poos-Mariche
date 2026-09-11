@@ -84,11 +84,10 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
         const isSalePromo = sale.items.some(i => i.isPromo);
         const rateFactor = isSalePromo ? 1 : (saleBcvRate / saleParallelRate);
         
-        // Calculamos el ratio de cobro (qué % del total solicitado se cobró realmente en esta transacción)
+        // Calculamos el ratio de cobro
         const itemsTotalBillable = sale.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
         const collectionRatio = itemsTotalBillable > 0 ? totalCollectedNominal / itemsTotalBillable : 1;
 
-        // Procesar productos que NO son reparaciones (incluye servicios manuales y fiados)
         const productItemsInSale = sale.items.filter(i => !i.isRepair);
         
         productItemsInSale.forEach(item => {
@@ -97,11 +96,12 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
             
             let cost = 0;
 
-            // PREFERIMOS EL COSTO GUARDADO EN EL REGISTRO DE VENTA
-            if (item.costPrice !== undefined) {
+            // --- MOTOR DE RESCATE HÍBRIDO EN EXCEL ---
+            if (item.costPrice !== undefined && item.costPrice !== null && item.costPrice !== 0) {
+                // Caso A: Costo congelado presente
                 cost = item.costPrice * item.quantity * collectionRatio;
             } else {
-                // FALLBACK: Venta antigua sin costo persistido
+                // Caso B: Rescate histórico desde Memoria RAM
                 if (sale.fiadoId) {
                     const fiado = fiados.find(f => f.id === sale.fiadoId);
                     if (fiado) {
@@ -111,8 +111,13 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
                 } else if (item.isCustom) {
                     cost = (item.customCostPrice || 0) * item.quantity * collectionRatio;
                 } else {
-                    const product = products.find(p => p.id === item.productId);
-                    cost = (product?.costPrice || 0) * item.quantity * collectionRatio;
+                    // Lookup por ID, SKU o Nombre (Fuzzy rescue)
+                    const matchedProduct = products.find(p => 
+                        p.id === item.productId || 
+                        p.sku === item.productId || 
+                        p.name === item.name
+                    );
+                    cost = (matchedProduct?.costPrice || 0) * item.quantity * collectionRatio;
                 }
             }
             

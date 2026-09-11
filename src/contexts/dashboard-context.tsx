@@ -5,7 +5,7 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 /**
  * DashboardContext - Almacén de Memoria Global
  * Guarda los resultados de las consultas a Firestore para evitar lecturas repetitivas.
- * Ahora incluye funciones para actualizar ítems específicos en cualquier colección cacheada.
+ * Ahora incluye funciones para actualizar e inyectar ítems en cualquier colección cacheada.
  */
 
 type DashboardContextType = {
@@ -13,6 +13,7 @@ type DashboardContextType = {
   setCachedData: (key: string, data: any[] | null) => void;
   updateCachedItem: (id: string, partialData: any) => void;
   removeCachedItem: (id: string) => void;
+  addItemToCache: (collectionPathPart: string, item: any) => void;
 };
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -30,9 +31,36 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   /**
+   * addItemToCache - Inyección Atómica Global
+   * Inserta un nuevo ítem (ej. una Venta) en todas las colecciones que coincidan
+   * con el nombre de la ruta, garantizando actualización instantánea en 0ms.
+   */
+  const addItemToCache = useCallback((collectionPathPart: string, item: any) => {
+    setDataCache(prev => {
+      const nextCache = { ...prev };
+      let hasChanged = false;
+
+      Object.keys(nextCache).forEach(key => {
+        // Buscamos claves que correspondan a la colección (ej. 'sale_transactions')
+        if (key.includes(collectionPathPart)) {
+          const list = nextCache[key];
+          if (Array.isArray(list)) {
+            // Evitamos duplicados por si acaso
+            if (!list.find(existing => existing.id === item.id)) {
+              nextCache[key] = [item, ...list];
+              hasChanged = true;
+            }
+          }
+        }
+      });
+
+      return hasChanged ? nextCache : prev;
+    });
+  }, []);
+
+  /**
    * updateCachedItem - Actualización Atómica Global
    * Busca un ID en TODAS las colecciones cacheadas y actualiza sus campos.
-   * Útil para que un cambio en el POS se refleje en la pestaña de Inventario o Reparaciones.
    */
   const updateCachedItem = useCallback((id: string, partialData: any) => {
     setDataCache(prev => {
@@ -80,7 +108,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <DashboardContext.Provider value={{ dataCache, setCachedData, updateCachedItem, removeCachedItem }}>
+    <DashboardContext.Provider value={{ dataCache, setCachedData, updateCachedItem, removeCachedItem, addItemToCache }}>
       {children}
     </DashboardContext.Provider>
   );
@@ -91,10 +119,12 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
  */
 export function useDashboardStore() {
   const context = useContext(DashboardContext);
-  return context || { 
+  const fallback = { 
     dataCache: {}, 
     setCachedData: () => {}, 
     updateCachedItem: () => {}, 
-    removeCachedItem: () => {} 
+    removeCachedItem: () => {},
+    addItemToCache: () => {} 
   };
+  return context || fallback;
 }

@@ -13,7 +13,8 @@ import {
   Download,
   Receipt,
   TrendingUp,
-  HandCoins
+  HandCoins,
+  LogOut
 } from 'lucide-react';
 import {
   Sidebar,
@@ -32,6 +33,7 @@ import { doc } from 'firebase/firestore';
 import type { UserProfile, UserModule } from '@/lib/types';
 import { Button } from './ui/button';
 import { useState, useEffect } from 'react';
+import { signOut } from 'firebase/auth';
 
 type NavItem = {
     href: string;
@@ -40,7 +42,6 @@ type NavItem = {
     module?: UserModule;
 };
 
-// Módulos visibles en la navegación
 const navItems: NavItem[] = [
   { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
   { href: '/dashboard/inventory', icon: Package, label: 'Inventario', module: 'inventory' },
@@ -53,7 +54,7 @@ const navItems: NavItem[] = [
 
 export function SidebarNav() {
   const pathname = usePathname();
-  const { firestore, user } = useFirebase();
+  const { firestore, user, auth } = useFirebase();
   const [installPrompt, setInstallPrompt] = useState<any>(null);
 
   useEffect(() => {
@@ -64,13 +65,6 @@ export function SidebarNav() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
-
-  const handleInstall = async () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    await installPrompt.userChoice;
-    setInstallPrompt(null);
-  };
 
   const profileRef = useMemoFirebase(() => 
     (firestore && user) ? doc(firestore, 'users', user.uid) : null,
@@ -83,16 +77,16 @@ export function SidebarNav() {
   const filteredNavItems = navItems.filter(item => {
       if (!item.module) return true;
       if (!profile) return false;
-      
-      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis', 'fiados'];
+      const enabledModules = profile.enabledModules || [];
       return enabledModules.includes(item.module);
   });
 
-  const isManagerMode = typeof window !== 'undefined' && sessionStorage.getItem('mm_security_unlocked') === 'true';
-
-  const handleLockManager = () => {
+  const handleSignOut = () => {
+      sessionStorage.removeItem('mm_session_id');
       sessionStorage.removeItem('mm_security_unlocked');
-      window.location.reload();
+      if (auth) {
+          signOut(auth).then(() => { window.location.href = '/'; });
+      }
   };
 
   return (
@@ -143,33 +137,19 @@ export function SidebarNav() {
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className='mt-auto p-4 space-y-3'>
-        
-        {installPrompt && (
-            <Button 
-                onClick={handleInstall}
-                variant="default" 
-                className="w-full justify-start h-10 text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white shadow-lg animate-in fade-in slide-in-from-bottom-2"
-            >
-                <Download className="mr-2 h-3.5 w-3.5" />
-                INSTALAR EN ESCRITORIO
-            </Button>
-        )}
-
-        {isManagerMode && (
-            <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full justify-start h-9 text-[10px] font-black border-destructive/30 text-destructive hover:bg-destructive/5"
-                onClick={handleLockManager}
-            >
-                <Lock className="w-3 h-3 mr-2" />
-                CERRAR SESIÓN GERENTE
-            </Button>
-        )}
+        <Button 
+            variant="ghost" 
+            size="sm" 
+            className="w-full justify-start h-9 text-[10px] font-black text-muted-foreground hover:text-destructive hover:bg-destructive/5"
+            onClick={handleSignOut}
+        >
+            <LogOut className="w-3 h-3 mr-2" />
+            CERRAR SESIÓN
+        </Button>
         <Separator className="my-2 bg-sidebar-border/50"/>
         <SidebarMenu>
             <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={{children: 'Mi Perfil / Ajustes'}} isActive={pathname === '/dashboard/settings'}>
+                <SidebarMenuButton asChild tooltip={{children: 'Mi Perfil'}} isActive={pathname === '/dashboard/settings'}>
                     <Link href="/dashboard/settings">
                         <User />
                         <span className="truncate">{profile?.email || user?.email || 'Mi Cuenta'}</span>
