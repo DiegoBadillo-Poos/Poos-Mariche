@@ -110,13 +110,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { data: profile, isLoading: isProfileLoading } = useDoc<UserProfile>(profileRef);
 
   /**
-   * VIGILANCIA DE SESIÓN ÚNICA (Solo dentro del Dashboard)
+   * VIGILANTE DE SESIÓN ÚNICA (PASIVO)
+   * Solo corre dentro del Dashboard. Monitoriza si el lastSessionId cambia en la nube.
    */
   useEffect(() => {
     if (!firestore || !user || !auth) return;
 
     const unsubscribe = onSnapshot(doc(firestore, 'users', user.uid), async (snap) => {
-      // Ignorar escrituras pendientes (cambios iniciados por nosotros mismos)
+      // 1. IGNORAR CAMBIOS LOCALES EN PROCESO (Escrituras optimistas)
       if (snap.metadata.hasPendingWrites) {
         setIsSessionValidating(false);
         return;
@@ -126,11 +127,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         const data = snap.data();
         const localSessionId = localStorage.getItem(SESSION_KEY);
         
-        // Si no hay ID local pero el servidor tiene uno, lo adoptamos (ej. F5 tras login exitoso)
+        // 2. ADOPCIÓN AUTOMÁTICA
+        // Si el usuario entra (ej. F5) y no tiene ID local, adopta el de la nube para no ser expulsado.
         if (!localSessionId && data.lastSessionId) {
           localStorage.setItem(SESSION_KEY, data.lastSessionId);
         } 
-        // Si hay discrepancia real (acceso desde otro dispositivo)
+        // 3. EXPULSIÓN POR CONFLICTO
+        // Solo si tenemos un ID local y es DIFERENTE al que está mandando en la nube.
         else if (localSessionId && data.lastSessionId && localSessionId !== data.lastSessionId) {
           localStorage.removeItem(SESSION_KEY);
           sessionStorage.removeItem('mm_security_unlocked');
@@ -153,7 +156,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <div className="flex h-screen items-center justify-center bg-slate-50">
               <div className="flex flex-col items-center gap-4">
                   <Loader2 className="h-12 w-12 animate-spin text-primary opacity-20" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-primary animate-pulse">Sincronizando Sesión...</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-primary animate-pulse">Iniciando Sistema...</p>
               </div>
           </div>
       );

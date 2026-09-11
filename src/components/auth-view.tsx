@@ -9,7 +9,7 @@ import { Label } from "./ui/label";
 import { AppLogo } from "./icons";
 import { Loader2, Mail, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
 
 const SESSION_KEY = 'mm_session_id';
 
@@ -36,33 +36,43 @@ export function AuthView() {
 
       const user = userCredential.user;
       
-      // GENERACIÓN DE SESIÓN ÚNICA ATÓMICA
+      // 1. GENERACIÓN INSTANTÁNEA DE IDENTIDAD LOCAL
       const newSessionId = crypto.randomUUID();
-      
-      // 1. Guardamos localmente DE INMEDIATO
       localStorage.setItem(SESSION_KEY, newSessionId);
 
+      // 2. SINCRONIZACIÓN EN SEGUNDO PLANO (NO-BLOQUEANTE)
+      // No usamos 'await' aquí para que la navegación sea instantánea
       const profileRef = doc(firestore, 'users', user.uid);
-      const profileSnap = await getDoc(profileRef);
       
-      // 2. Actualizamos Firestore con el nuevo ID de sesión
-      await setDoc(profileRef, {
-        uid: user.uid,
-        email: user.email,
+      const sessionUpdate = {
         lastSessionId: newSessionId,
         updatedAt: new Date().toISOString(),
-        ...( !profileSnap.exists() && {
+      };
+
+      // Si es registro, creamos el perfil completo. Si es login, solo actualizamos sesión.
+      if (isLogin) {
+          updateDoc(profileRef, sessionUpdate).catch(err => {
+              console.warn("Falla silenciosa en sync de sesión:", err);
+          });
+      } else {
+          setDoc(profileRef, {
+            uid: user.uid,
+            email: user.email,
+            lastSessionId: newSessionId,
             createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             licenseStatus: 'expired',
             enabledModules: ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis', 'fiados', 'inventory_aging', 'loans', 'exchange', 'payroll', 'treasury'],
             lockedModules: [],
             isPinRequired: false,
-            businessRIF: "",
-            businessAddress: ""
-        })
-      }, { merge: true });
+          }, { merge: true }).catch(err => {
+              console.warn("Falla silenciosa en creación de perfil:", err);
+          });
+      }
 
-      // No necesitamos redirigir, el cambio de estado 'user' activará el Dashboard
+      // 3. NAVEGACIÓN INMEDIATA
+      // Al cambiar el estado 'user' en el FirebaseProvider, el layout mostrará el Dashboard automáticamente.
+      
     } catch (error: any) {
       console.error("Auth error:", error);
       
