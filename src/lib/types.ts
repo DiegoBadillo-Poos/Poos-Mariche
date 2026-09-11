@@ -213,7 +213,7 @@ export type Payment = {
 
 export type Sale = {
   id?: string;
-  items: (CartItem & { price: number })[];
+  items: (CartItem & { price: number; costPrice: number })[];
   repairJobId?: string;
   fiadoId?: string;
   customerName?: string;

@@ -97,17 +97,23 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
             
             let cost = 0;
 
-            if (sale.fiadoId) {
-                const fiado = fiados.find(f => f.id === sale.fiadoId);
-                if (fiado) {
-                    const costRatio = fiado.totalAmount > 0 ? (fiado.totalCost || 0) / fiado.totalAmount : 0;
-                    cost = nominalRevenue * costRatio;
-                }
-            } else if (item.isCustom) {
-                cost = (item.customCostPrice || 0) * item.quantity * collectionRatio;
+            // PREFERIMOS EL COSTO GUARDADO EN EL REGISTRO DE VENTA
+            if (item.costPrice !== undefined) {
+                cost = item.costPrice * item.quantity * collectionRatio;
             } else {
-                const product = products.find(p => p.id === item.productId);
-                cost = (product?.costPrice || 0) * item.quantity * collectionRatio;
+                // FALLBACK: Venta antigua sin costo persistido
+                if (sale.fiadoId) {
+                    const fiado = fiados.find(f => f.id === sale.fiadoId);
+                    if (fiado) {
+                        const costRatio = fiado.totalAmount > 0 ? (fiado.totalCost || 0) / fiado.totalAmount : 0;
+                        cost = nominalRevenue * costRatio;
+                    }
+                } else if (item.isCustom) {
+                    cost = (item.customCostPrice || 0) * item.quantity * collectionRatio;
+                } else {
+                    const product = products.find(p => p.id === item.productId);
+                    cost = (product?.costPrice || 0) * item.quantity * collectionRatio;
+                }
             }
             
             const realProfit = realRevenue - cost;

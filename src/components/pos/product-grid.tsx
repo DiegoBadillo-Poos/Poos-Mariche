@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Product } from "@/lib/types";
@@ -8,26 +7,31 @@ import { ScrollArea } from "../ui/scroll-area";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "../ui/skeleton";
-import { TicketPercent, Search, PackagePlus, Lock, Percent, Scale } from "lucide-react";
+import { TicketPercent, Search, PackagePlus, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "../ui/button";
 import { useDebounce } from "use-debounce";
-
+import { useFirebase } from "@/firebase";
+import { collection, query, where, limit, getDocs } from "firebase/firestore";
 
 type ProductGridProps = {
   products: Product[];
   onProductSelect: (product: Product) => void;
   isLoading?: boolean;
+  mutateProducts: (updater: any) => void;
 };
 
 const ITEMS_PER_PAGE = 20;
 
-export function ProductGrid({ products, onProductSelect, isLoading }: ProductGridProps) {
+export function ProductGrid({ products, onProductSelect, isLoading, mutateProducts }: ProductGridProps) {
+  const { firestore, user } = useFirebase();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch] = useDebounce(searchTerm, 400);
   const { format, getSymbol, getFinalPrice, convert } = useCurrency();
   const [currentPage, setCurrentPage] = useState(1);
+  const [isFallbackLoading, setIsFallbackLoading] = useState(false);
+  const [lastSearchedTerm, setLastSearchedTerm] = useState("");
 
   const categories = useMemo(() => {
     if (!products) return ['Todos'];
@@ -37,6 +41,7 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
 
   const [activeCategory, setActiveCategory] = useState('Todos');
 
+  // FILTRADO LOCAL (PASO 1 - 0 LECTURAS)
   const filteredProducts = useMemo(() => {
     if (!products) return [];
     const term = debouncedSearch.toLowerCase().trim();
@@ -52,6 +57,48 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
         )
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [products, activeCategory, debouncedSearch]);
+
+  // BÚSQUEDA BAJO DEMANDA (PASO 2 - FALLBACK DE 1 LECTURA)
+  useEffect(() => {
+    const term = debouncedSearch.trim().toLowerCase();
+    if (!firestore || !user || term.length < 3 || term === lastSearchedTerm) return;
+
+    // Solo consultamos a la nube si la memoria RAM no tiene resultados para este término
+    if (filteredProducts.length === 0 && !isLoading) {
+        const performFallbackSearch = async () => {
+            setIsFallbackLoading(true);
+            setLastSearchedTerm(term);
+            try {
+                // Buscamos por palabras clave en el índice global del servidor
+                const q = query(
+                    collection(firestore, 'users', user.uid, 'products'),
+                    where('searchKeywords', 'array-contains', term),
+                    limit(5)
+                );
+                
+                const snap = await getDocs(q);
+                if (!snap.empty) {
+                    const newProducts = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Product);
+                    
+                    // INYECCIÓN EN MEMORIA GLOBAL:
+                    // Al añadirlo aquí, useCollection detecta el cambio y actualiza el DashboardContext.
+                    // A partir de ahora, este producto es parte de la "RAM" local y no volverá a costar lecturas.
+                    mutateProducts((prev: Product[] | null) => {
+                        const existingIds = new Set((prev || []).map(p => p.id));
+                        const uniqueNew = newProducts.filter(p => !existingIds.has(p.id));
+                        return [...(prev || []), ...uniqueNew];
+                    });
+                }
+            } catch (e) {
+                console.error("Fallback search failed:", e);
+            } finally {
+                setIsFallbackLoading(false);
+            }
+        };
+
+        performFallbackSearch();
+    }
+  }, [debouncedSearch, filteredProducts.length, firestore, user, isLoading, mutateProducts, lastSearchedTerm]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -87,7 +134,6 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
     setCurrentPage((prev) => Math.min(prev + 1, totalPages));
   };
 
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
         <div className="flex flex-col sm:flex-row gap-2 mb-3 shrink-0">
@@ -105,13 +151,21 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                 <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                     type="search"
-                    placeholder="Buscar producto o SKU..."
+                    placeholder="Buscar producto o escanear código..."
                     className="w-full pl-8 h-8 text-xs"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
+                    autoFocus
                 />
+                {isFallbackLoading && (
+                    <div className="absolute right-2 top-1.5 flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-50 border border-blue-100 animate-in fade-in duration-300">
+                        <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
+                        <span className="text-[9px] font-black text-blue-600 uppercase tracking-tighter">Buscando en catálogo general...</span>
+                    </div>
+                )}
             </div>
         </div>
+
         <div className="relative flex-1 min-h-0">
           <ScrollArea className="h-full">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-1.5 sm:gap-2 pr-2">
@@ -137,15 +191,23 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                     const displayPrice = hasPromo ? promoPrice : basePrice;
                     const displayPriceBs = convert(displayPrice, 'USD', 'Bs');
 
+                    // Detectar si el producto fue cargado via fallback (no está en los primeros 200)
+                    const isNewInCache = product.createdAt === undefined; 
+
                     return (
                         <Card
                             key={product.id}
                             onClick={() => availableStock > 0 && onProductSelect(product)}
                             className={cn(
-                                "cursor-pointer hover:border-primary transition-all flex flex-col justify-between h-full group border shadow-sm",
+                                "cursor-pointer hover:border-primary transition-all flex flex-col justify-between h-full group border shadow-sm relative overflow-hidden",
                                 availableStock <= 0 && "opacity-50 cursor-not-allowed bg-slate-50 border-dashed"
                             )}
                         >
+                            {isNewInCache && (
+                                <div className="absolute top-0 right-0 p-0.5 bg-blue-600 text-white z-10 rounded-bl-md shadow-md">
+                                    <Sparkles className="w-2.5 h-2.5" />
+                                </div>
+                            )}
                             <CardHeader className="p-1.5 pb-1 space-y-0.5">
                                 <CardTitle className="text-[10px] sm:text-[11px] font-bold leading-tight line-clamp-2 min-h-[1.8rem] flex gap-1 items-start">
                                   <span className="flex-1 uppercase">{product.name}</span>
@@ -173,10 +235,22 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                     )
                 })}
             </div>
+            
+            {filteredProducts.length === 0 && !isLoading && !isFallbackLoading && searchTerm.length > 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 animate-in fade-in duration-500">
+                    <div className="p-4 bg-muted/30 rounded-full">
+                        <AlertCircle className="w-10 h-10 text-muted-foreground opacity-20" />
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-sm font-black text-slate-400 uppercase">Sin resultados locales</p>
+                        <p className="text-[10px] text-muted-foreground uppercase font-bold max-w-[200px] mx-auto">Escribe al menos 3 letras o el código completo para buscar en el catálogo general.</p>
+                    </div>
+                </div>
+            )}
           </ScrollArea>
         </div>
          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-3 flex-shrink-0 bg-white/80 backdrop-blur-sm mt-auto">
+            <div className="flex items-center justify-between pt-3 flex-shrink-0 bg-white/80 backdrop-blur-sm mt-auto border-t">
                 <span className="text-[9px] text-muted-foreground font-black uppercase">
                     Pág. {currentPage} / {totalPages}
                 </span>

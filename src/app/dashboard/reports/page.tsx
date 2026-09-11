@@ -18,7 +18,7 @@ export default function ReportsPage() {
 function ReportsContent() {
     const { firestore, user } = useFirebase();
     
-    // ACOTE DE CONSULTAS: limit(50) para proteger rendimiento
+    // ACOTE ESTANDARIZADO: Todas estas consultas comparten clave de cache con sus pestañas de origen
     const salesCollection = useMemoFirebase(() => 
         (firestore && user) ? query(collection(firestore, "users", user.uid, "sale_transactions"), orderBy("transactionDate", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
@@ -26,13 +26,13 @@ function ReportsContent() {
     const { data: sales, isLoading: salesLoading } = useCollection<Sale>(salesCollection);
 
     const productsCollection = useMemoFirebase(() => 
-        (firestore && user) ? query(collection(firestore, "users", user.uid, "products"), orderBy("name"), limit(50)) : null,
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "products"), orderBy("name"), limit(200)) : null,
         [firestore, user?.uid]
     );
     const { data: products, isLoading: productsLoading } = useCollection<Product>(productsCollection);
 
     const repairJobsCollection = useMemoFirebase(() =>
-        (firestore && user) ? query(collection(firestore, "users", user.uid, "repair_jobs"), orderBy("createdAt", "desc"), limit(50)) : null,
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "repair_jobs"), orderBy("createdAt", "desc"), limit(100)) : null,
         [firestore, user?.uid]
     );
     const { data: repairJobs, isLoading: repairsLoading } = useCollection<RepairJob>(repairJobsCollection);

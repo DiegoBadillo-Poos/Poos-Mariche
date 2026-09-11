@@ -30,7 +30,7 @@ import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
 import { Label } from "../ui/label";
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from "@/firebase";
-import { doc, runTransaction, query, orderBy, collection, type DocumentSnapshot, where, limit, getDocs } from "firebase/firestore";
+import { doc, runTransaction, query, orderBy, collection, type DocumentSnapshot, where, limit, getDocs, increment, getDoc } from "firebase/firestore";
 import { handlePrintAllTickets } from "./repair-ticket";
 import { User, Smartphone, Package, Search, Plus, Trash2, Loader2, DollarSign, Calculator, UserCheck, MapPin, Hammer, Minus, TicketPercent, CheckCircle2 } from "lucide-react";
 import { format, addDays } from "date-fns";
@@ -84,7 +84,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
   const [replenishProduct, setReplenishProduct] = useState<Product | null>(null);
   const [manualQuickAddOpen, setManualQuickAddOpen] = useState(false);
   
-  // Estados para búsqueda por demanda de productos
   const [productSearch, setProductSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearchingProducts, setIsSearchingProducts] = useState(false);
@@ -99,7 +98,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
   const isInitialized = useRef(false);
   const isClosingViaMinimize = useRef(false);
 
-  // Estado para el autocompletado de cliente bajo demanda
   const [lookedUpCustomer, setLookedUpCustomer] = useState<any>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -124,7 +122,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
   );
   const { data: profile } = useDoc<UserProfile>(profileRef);
 
-  // EFECTO DE BÚSQUEDA DE PRODUCTOS POR DEMANDA (ON-DEMAND)
   useEffect(() => {
     if (!firestore || !user || !open) return;
 
@@ -161,7 +158,6 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
   const watchedID = form.watch("customerID");
   const watchedName = form.watch("customerName");
 
-  // EFECTO DE BÚSQUEDA DE CLIENTE BAJO DEMANDA
   useEffect(() => {
     const fetchCustomer = async () => {
       if (!firestore || !user || !watchedID || watchedID.length < 5 || isSubmitting) {
@@ -262,22 +258,29 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
     }
   }, [repairJob, open, form]);
 
-  const handleAddPartFromInventory = (p: Product) => {
-      const existing = reservedParts.find(item => item.productId === p.id);
+  const handleAddPartFromInventory = async (p: Product) => {
+      // Re-fetch product to ensure fresh stock data after replenishment
+      let freshProduct = p;
+      if (firestore && user) {
+          const snap = await getDoc(doc(firestore, 'users', user.uid, 'products', p.id!));
+          if (snap.exists()) freshProduct = { ...snap.data(), id: snap.id } as Product;
+      }
+
+      const existing = reservedParts.find(item => item.productId === freshProduct.id);
       const qtyInForm = existing ? existing.quantity : 0;
-      const originalInJob = repairJob?.reservedParts?.find(rp => rp.productId === p.id)?.quantity || 0;
-      const available = (p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0)) + originalInJob;
+      const originalInJob = repairJob?.reservedParts?.find(rp => rp.productId === freshProduct.id)?.quantity || 0;
+      const available = (freshProduct.stockLevel - (freshProduct.reservedStock || 0) - (freshProduct.damagedStock || 0)) + originalInJob;
       
       if (available < qtyInForm + 1) {
-          setReplenishProduct(p);
+          setReplenishProduct(freshProduct);
           setPartsPopoverOpen(false);
           return;
       }
 
       if (existing) {
-          form.setValue('reservedParts', reservedParts.map(item => item.productId === p.id ? { ...item, quantity: item.quantity + 1 } : item));
+          form.setValue('reservedParts', reservedParts.map(item => item.productId === freshProduct.id ? { ...item, quantity: item.quantity + 1 } : item));
       } else {
-          form.setValue('reservedParts', [...reservedParts, { productId: p.id!, productName: p.name.toUpperCase(), quantity: 1, costPrice: p.costPrice, isPromo: !!(p.promoPrice && p.promoPrice > 0), isWarranty: false, isManual: false, isConsumed: false }]);
+          form.setValue('reservedParts', [...reservedParts, { productId: freshProduct.id!, productName: freshProduct.name.toUpperCase(), quantity: 1, costPrice: freshProduct.costPrice, isPromo: !!(freshProduct.promoPrice && freshProduct.promoPrice > 0), isWarranty: false, isManual: false, isConsumed: false }]);
       }
       setPartsPopoverOpen(false);
   };
@@ -366,23 +369,23 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
                 }
             }
 
+            // CRITICAL: Use atomic increments to prevent negative stock issues
             for (const [pid, change] of Array.from(reservedDeltas.entries())) {
                 if (change.delta === 0) continue;
                 const pSnap = productSnapshots.get(pid);
                 if (pSnap?.exists()) {
                     const data = pSnap.data() as Product;
-                    if (change.delta > 0 && ((data.stockLevel - data.reservedStock - (data.damagedStock || 0)) < change.delta)) {
-                        throw new Error(`Stock insuficiente para "${change.name}".`);
+                    if (change.delta > 0 && ((data.stockLevel - (data.reservedStock || 0) - (data.damagedStock || 0)) < change.delta)) {
+                        throw new Error(`¡Inventario Bloqueado! No hay suficiente stock disponible de "${change.name}".`);
                     }
-                    transaction.update(pSnap.ref, { reservedStock: Math.max(0, (data.reservedStock || 0) + change.delta) });
+                    transaction.update(pSnap.ref, { reservedStock: increment(change.delta) });
                 }
             }
 
             for (const [pid, info] of Array.from(stockReturns.entries())) {
                 const pSnap = productSnapshots.get(pid);
                 if (pSnap?.exists()) {
-                    const data = pSnap.data() as Product;
-                    transaction.update(pSnap.ref, { stockLevel: (data.stockLevel || 0) + info.qty });
+                    transaction.update(pSnap.ref, { stockLevel: increment(info.qty) });
                 }
             }
 
@@ -395,10 +398,9 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange, on
                 for (const part of newInventoryReserved) {
                     const pSnap = productSnapshots.get(part.productId);
                     if (pSnap?.exists()) {
-                        const pData = pSnap.data() as Product;
                         transaction.update(pSnap.ref, { 
-                            stockLevel: (pData.stockLevel || 0) - part.quantity,
-                            reservedStock: Math.max(0, (pData.reservedStock || 0) - part.quantity)
+                            stockLevel: increment(-part.quantity),
+                            reservedStock: increment(-part.quantity)
                         });
                     }
                 }
@@ -752,7 +754,7 @@ function ManualQuickAddDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean
                                     type="number" 
                                     value={priceOffer} 
                                     onChange={(e) => setPriceOffer(e.target.value)} 
-                                    className="pl-7 h-9 border-blue-200 font-black text-base"
+                                    className="pl-7 h-9 border-green-200 font-black text-base"
                                     placeholder="0.00"
                                 />
                             </div>

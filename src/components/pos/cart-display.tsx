@@ -262,7 +262,17 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onUpdateDisco
       if (!firestore || !user) return null;
 
       const saleId = generateSaleId();
-      const cartWithPrices = cart.map(item => ({ ...item, price: getPrice(item) }));
+      
+      // CAPTURA DE COSTO EN CALIENTE: Guardamos el costo en cada item para auditoría histórica
+      const cartWithPrices = cart.map(item => {
+          const product = allProducts.find(p => p.id === item.productId);
+          return { 
+              ...item, 
+              price: getPrice(item),
+              costPrice: item.isCustom ? (item.customCostPrice || 0) : (product?.costPrice || 0)
+          };
+      });
+
       const hasRepairInCart = cartWithPrices.some(i => i.isRepair);
 
       const totalPaidInUSD = payments.reduce((acc, p) => {

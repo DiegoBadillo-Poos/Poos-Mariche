@@ -25,7 +25,7 @@ function POSContent() {
     const [cart, setCart] = useState<CartItem[]>([]);
     const [activeRepairJob, setActiveRepairJob] = useState<RepairJob | null>(null);
 
-    // Límite aumentado a 200 para el POS para asegurar que la mayoría de los productos comunes estén disponibles.
+    // ESTANDARIZADO: Límite 200 productos para compartir cache global
     const productsCollection = useMemoFirebase(() => 
         (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(200)) : null,
         [firestore, user?.uid]
@@ -113,7 +113,6 @@ function POSContent() {
 
             if (existing) return prev.map(i => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i);
             
-            // Aplicar automáticamente el descuento si el producto lo tiene definido
             const discountToApply = product.hasDiscount ? (product.discountAmount || 0) : 0;
             
             return [...prev, { 
@@ -172,14 +171,11 @@ function POSContent() {
     };
 
     const handleCheckoutSuccess = (sale: Sale, consumedParts?: ReservedPart[]) => {
-        // ACTUALIZACIÓN OPTIMISTA: Descontamos stock localmente para actualización instantánea
         mutateProducts((currentProducts) => {
             if (!currentProducts) return null;
-            
             const productsMap = new Map(currentProducts.map(p => [p.id, { ...p }]));
             let modified = false;
 
-            // 1. Descontar items vendidos directamente en el carrito
             sale.items.forEach(item => {
                 if (item.isRepair || item.isCustom) return;
                 const p = productsMap.get(item.productId);
@@ -190,14 +186,12 @@ function POSContent() {
                 }
             });
 
-            // 2. Descontar repuestos de reparación (si fue una venta técnica)
             if (consumedParts) {
                 consumedParts.forEach(part => {
                     if (part.isManual) return;
                     const p = productsMap.get(part.productId);
                     if (p) {
                         p.stockLevel -= part.quantity;
-                        // Liberamos el stock que estaba reservado
                         p.reservedStock = Math.max(0, (p.reservedStock || 0) - part.quantity);
                         p.salesCount = (p.salesCount || 0) + part.quantity;
                         modified = true;
@@ -206,7 +200,7 @@ function POSContent() {
             }
 
             return modified ? Array.from(productsMap.values()) : currentProducts;
-        }, false); // El parámetro false evita una re-validación inmediata innecesaria
+        }, false);
         
         setActiveRepairJob(null);
         localStorage.removeItem('mm_repair_draft');
@@ -227,7 +221,12 @@ function POSContent() {
             </header>
             <main className="flex-1 flex flex-col md:grid md:grid-cols-3 lg:grid-cols-5 overflow-hidden">
                 <div className="order-1 md:order-2 md:col-span-2 lg:col-span-3 p-2 sm:p-4 overflow-hidden flex flex-col">
-                     <ProductGrid products={products || []} onProductSelect={handleProductSelect} isLoading={productsLoading} />
+                     <ProductGrid 
+                        products={products || []} 
+                        onProductSelect={handleProductSelect} 
+                        isLoading={productsLoading}
+                        mutateProducts={mutateProducts}
+                    />
                 </div>
                 <div className="order-2 md:order-1 md:col-span-1 lg:col-span-2 bg-white border-t md:border-t-0 md:border-r flex flex-col h-[45vh] md:h-full">
                     <CartDisplay 

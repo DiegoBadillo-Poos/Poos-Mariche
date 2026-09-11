@@ -65,27 +65,29 @@ function TreasuryContent() {
     const currentInvPercent = localInvPerc !== null ? localInvPerc : (settings?.investmentPercentage ?? 30);
     const currentPartners = localPartners !== null ? localPartners : (settings?.partnersCount ?? 2);
 
-    // ACOTE DE CONSULTAS: limit(50) para proteger rendimiento
+    // ESTANDARIZADO: Sincronizado con Reportes/Dashboard
     const salesCollection = useMemoFirebase(() => 
         (firestore && user) ? query(collection(firestore, "users", user.uid, "sale_transactions"), orderBy("transactionDate", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: sales, isLoading: salesLoading } = useCollection<Sale>(salesCollection);
 
+    // ESTANDARIZADO: Sincronizado con Inventario/POS
     const productsCollection = useMemoFirebase(() => 
-        (firestore && user) ? query(collection(firestore, "users", user.uid, "products"), orderBy("name"), limit(50)) : null, 
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "products"), orderBy("name"), limit(200)) : null, 
         [firestore, user?.uid]
     );
     const { data: products, isLoading: productsLoading } = useCollection<Product>(productsCollection);
 
+    // ESTANDARIZADO: Sincronizado con Reparaciones
     const repairJobsCollection = useMemoFirebase(() =>
-        (firestore && user) ? query(collection(firestore, "users", user.uid, "repair_jobs"), orderBy("createdAt", "desc"), limit(50)) : null,
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "repair_jobs"), orderBy("createdAt", "desc"), limit(100)) : null,
         [firestore, user?.uid]
     );
     const { data: repairJobs, isLoading: repairsLoading } = useCollection<RepairJob>(repairJobsCollection);
 
     const exchangeCollection = useMemoFirebase(() => 
-        (firestore && user) ? query(collection(firestore, "users", user.uid, "currency_exchanges"), orderBy("createdAt", "desc"), limit(50)) : null,
+        (firestore && user) ? query(collection(firestore, "users", user.uid, "currency_exchanges"), orderBy("createdAt", "desc"), limit(50)) : null, 
         [firestore, user?.uid]
     );
     const { data: exchanges, isLoading: exchangesLoading } = useCollection<CurrencyExchange>(exchangeCollection);
@@ -135,7 +137,6 @@ function TreasuryContent() {
         sales.forEach(s => {
             if (!s.transactionDate || !filterByReset(s.transactionDate)) return;
 
-            // IMPACTO DE REEMBOLSOS EN EL SALDO REAL
             if (s.status === 'refunded' && s.refundPaymentMethod) {
                 const refundMethod = mapBsMethod(s.refundPaymentMethod);
                 const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
@@ -232,7 +233,6 @@ function TreasuryContent() {
             return isWithinInterval(new Date(s.transactionDate), { start: from, end: to });
         }).forEach(s => {
             
-            // RESTAR REEMBOLSOS DEL BALANCE DEL PERIODO
             if (s.status === 'refunded' && s.refundPaymentMethod) {
                 const refundMethod = mapBsMethod(s.refundPaymentMethod);
                 const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
@@ -273,7 +273,6 @@ function TreasuryContent() {
             if (breakdown[source] !== undefined) breakdown[source] -= e.bsAmount;
         });
 
-        // Egresos del periodo
         (expenses || []).filter(ex => isValid(parseISO(ex.createdAt)) && isWithinInterval(parseISO(ex.createdAt), { start: from, end: to })).forEach(ex => {
             totalExpensesUSD += ex.amountUSD + convert(ex.amountBs, 'Bs', 'USD');
             if (ex.amountBs > 0) {
@@ -322,7 +321,6 @@ function TreasuryContent() {
                     const cost = (p?.costPrice || 0) * item.quantity;
                     C += cost;
 
-                    // Agregar a la lista de reposición (Solo mercancía de inventario estándar)
                     const existing = replenishmentMap.get(item.productId);
                     if (existing) {
                         existing.quantity += item.quantity;
@@ -470,7 +468,6 @@ function TreasuryContent() {
                     </div>
                 </div>
 
-                {/* Lista de mercancía para reponer */}
                 {stats.itemsToReplenish.length > 0 && (
                     <Card className="border-primary/10 shadow-md">
                         <CardHeader className="py-3 bg-muted/20">

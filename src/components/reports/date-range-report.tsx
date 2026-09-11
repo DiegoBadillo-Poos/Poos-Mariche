@@ -1,11 +1,10 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
 import type { Sale, Product, DailyReconciliation, RepairJob, CurrencyExchange, Fiado } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { DateRange } from "react-day-picker";
-import { format, startOfDay, endOfDay, isWithinInterval } from "date-fns";
+import { format, startOfDay, endOfDay, isWithinInterval, addWeeks, isAfter, parseISO, isValid } from "date-fns";
 import { es } from "date-fns/locale";
 import { Button } from "../ui/button";
 import { CalendarIcon, Landmark, DollarSign, Info, Sigma, TrendingUp, ShoppingBag, Package, CreditCard, Smartphone, Banknote } from "lucide-react";
@@ -157,28 +156,34 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                 let isRepair = !!item.isRepair;
                 let isWarranty = !!item.isWarranty;
 
-                if (item.isRepair) {
-                    key = `repair-${s.repairJobId || item.productId}`;
-                    const repair = repairJobs.find(rj => rj.id === (s.repairJobId || item.productId));
-                    if (repair) {
-                        const totalJobPartsCost = [...(repair.reservedParts || []), ...(repair.consumedParts || [])]
-                            .reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
-                        const costRatio = repair.estimatedCost > 0 ? totalJobPartsCost / repair.estimatedCost : 0;
-                        totalOriginalCost = nominalItemRevenue * costRatio;
-                    }
-                } else if (s.fiadoId) {
-                    key = `fiado-${s.fiadoId}`;
-                    const fiado = fiados?.find(f => f.id === s.fiadoId);
-                    if (fiado) {
-                        const costRatio = fiado.totalAmount > 0 ? (fiado.totalCost || 0) / fiado.totalAmount : 0;
-                        totalOriginalCost = nominalItemRevenue * costRatio;
-                    }
-                } else if (item.isCustom) {
-                    key = `custom-${item.name}`;
-                    totalOriginalCost = (item.customCostPrice || 0) * item.quantity * paymentRatio;
+                // PREFERIMOS EL COSTO GUARDADO EN EL ITEM PARA EVITAR LECTURAS EN CERO
+                if (item.costPrice !== undefined) {
+                    totalOriginalCost = item.costPrice * item.quantity * paymentRatio;
                 } else {
-                    const product = products.find(p => p.id === item.productId);
-                    totalOriginalCost = (product?.costPrice || 0) * item.quantity * paymentRatio;
+                    // FALLBACK: Si es una venta vieja sin costPrice, buscamos en RAM (puede ser cero si no se encuentra)
+                    if (item.isRepair) {
+                        key = `repair-${s.repairJobId || item.productId}`;
+                        const repair = repairJobs.find(rj => rj.id === (s.repairJobId || item.productId));
+                        if (repair) {
+                            const totalJobPartsCost = [...(repair.reservedParts || []), ...(repair.consumedParts || [])]
+                                .reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
+                            const costRatio = repair.estimatedCost > 0 ? totalJobPartsCost / repair.estimatedCost : 0;
+                            totalOriginalCost = nominalItemRevenue * costRatio;
+                        }
+                    } else if (s.fiadoId) {
+                        key = `fiado-${s.fiadoId}`;
+                        const fiado = fiados?.find(f => f.id === s.fiadoId);
+                        if (fiado) {
+                            const costRatio = fiado.totalAmount > 0 ? (fiado.totalCost || 0) / fiado.totalAmount : 0;
+                            totalOriginalCost = nominalItemRevenue * costRatio;
+                        }
+                    } else if (item.isCustom) {
+                        key = `custom-${item.name}`;
+                        totalOriginalCost = (item.customCostPrice || 0) * item.quantity * paymentRatio;
+                    } else {
+                        const product = products.find(p => p.id === item.productId);
+                        totalOriginalCost = (product?.costPrice || 0) * item.quantity * paymentRatio;
+                    }
                 }
 
                 const existing = itemsMap.get(key);

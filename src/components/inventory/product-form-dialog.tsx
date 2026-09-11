@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,7 +30,7 @@ import { useState, type ReactNode, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebase, setDocumentNonBlocking, useCollection, useMemoFirebase, useDoc } from "@/firebase";
 import { doc, collection, arrayUnion, query, limit } from "firebase/firestore";
-import { Check, ChevronsUpDown, Calculator, Smartphone, Barcode, Tag, Scale, Lock, Percent, Landmark, Gift, BadgePercent, Sparkles, RefreshCcw } from "lucide-react";
+import { Check, ChevronsUpDown, Calculator, Smartphone, Barcode, Tag, Scale, Lock, Percent, Landmark, Gift, BadgePercent, Sparkles, RefreshCcw, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -238,7 +239,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
         };
 
         if (inventorySettingsRef) {
-            setDocumentNonBlocking(inventorySettingsRef, {
+            await setDocumentNonBlocking(inventorySettingsRef, {
                 categories: arrayUnion(cat)
             }, { merge: true });
         }
@@ -247,7 +248,9 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
         const productRef = doc(firestore, 'users', user.uid, 'products', docId);
         
         const finalProduct = { ...finalValues, id: docId };
-        setDocumentNonBlocking(productRef, finalProduct, { merge: true });
+        
+        // CRITICAL: Await the save operation to prevent race conditions during repair registrations
+        await setDocumentNonBlocking(productRef, finalProduct, { merge: true });
         
         toast({ title: isEditing ? "Producto Actualizado" : "Producto Añadido" });
         
@@ -448,7 +451,12 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 <div className="space-y-1"><Label className="text-[9px] font-bold uppercase text-green-600">Venta</Label><div className="h-8 flex items-center justify-center font-black text-sm text-green-700 bg-green-50 rounded border border-green-200">{avail}</div></div>
             </div>
 
-            <DialogFooter className="pt-4"><Button type="submit" className="w-full h-12 font-bold uppercase shadow-lg" disabled={isSubmitting}>Guardar Producto</Button></DialogFooter>
+            <DialogFooter className="pt-4">
+                <Button type="submit" className="w-full h-12 font-bold uppercase shadow-lg" disabled={isSubmitting}>
+                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Guardar Producto
+                </Button>
+            </DialogFooter>
           </form>
         </Form>
       </DialogContent>

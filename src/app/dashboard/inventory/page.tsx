@@ -30,7 +30,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { differenceInDays, parseISO } from 'date-fns';
 import { cn } from "@/lib/utils";
 import { SecurityGate } from "@/components/security-gate";
-import { useDebounce } from "use-debounce";
 
 const productFilterFn: FilterFn<Product> = (row, columnId, value) => {
     const term = String(value).toLowerCase();
@@ -114,9 +113,9 @@ function InventoryContent() {
     );
     const { data: profile } = useDoc<UserProfile>(profileRef);
     
-    // Aumentado a 150 para que el usuario vea su catálogo, pero con tope para salvar lecturas.
+    // ESTANDARIZADO: Límite 200 para compartir cache con el POS
     const productsCollection = useMemoFirebase(() =>
-        (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(150)) : null,
+        (firestore && user) ? query(collection(firestore, 'users', user.uid, 'products'), orderBy('name'), limit(200)) : null,
         [firestore, user?.uid]
     );
     const { data: products, isLoading, mutate: mutateProducts } = useCollection<Product>(productsCollection);
