@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { FirebaseClientProvider, useFirebase } from '@/firebase';
 import { AuthView } from '@/components/auth-view';
 import { useEffect, useState } from 'react';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
 import { SWRConfig } from 'swr';
@@ -35,49 +35,40 @@ function AppContent({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const validateSession = async () => {
-      try {
-        const profileRef = doc(firestore, 'users', user.uid);
-        const profileSnap = await getDoc(profileRef);
-        
-        if (profileSnap.exists()) {
-          const data = profileSnap.data();
-          const localSessionId = sessionStorage.getItem(SESSION_KEY);
-          
-          // CASO 1: No hay sesión local (ej. refresco de página o pestaña nueva)
-          // Adoptamos la sesión de la DB para evitar bucles.
-          if (!localSessionId && data.lastSessionId) {
-            sessionStorage.setItem(SESSION_KEY, data.lastSessionId);
-          } 
-          // CASO 2: Conflicto de sesión (otro dispositivo entró)
-          else if (localSessionId && data.lastSessionId && localSessionId !== data.lastSessionId) {
-            console.warn("Sesión conflictiva detectada. Cerrando acceso.");
-            sessionStorage.removeItem(SESSION_KEY);
-            await signOut(auth);
-            window.location.href = '/';
-            return;
-          }
-        }
-        setIsInitializing(false);
-      } catch (e) {
-        console.error("Error validando sesión:", e);
-        setIsInitializing(false);
-      }
-    };
-
-    validateSession();
-
-    // Listener en tiempo real solo para el Dashboard para detectar si abren sesión en otro lado
-    const unsubscribe = onSnapshot(doc(firestore, 'users', user.uid), (snap) => {
+    /**
+     * MOTOR DE VIGILANCIA DE SESIÓN ÚNICA
+     * Usamos onSnapshot con metadatos para resolver condiciones de carrera.
+     */
+    const unsubscribe = onSnapshot(doc(firestore, 'users', user.uid), async (snap) => {
+      // Ignorar cambios locales que aún no se han confirmado en el servidor
+      // Esto evita que el sistema se expulse a sí mismo durante el proceso de login
       if (snap.metadata.hasPendingWrites) return;
+
       if (snap.exists()) {
         const data = snap.data();
-        const localSid = sessionStorage.getItem(SESSION_KEY);
-        if (localSid && data.lastSessionId && localSid !== data.lastSessionId) {
-          sessionStorage.removeItem(SESSION_KEY);
-          signOut(auth).then(() => { window.location.reload(); });
+        const localSessionId = localStorage.getItem(SESSION_KEY);
+        
+        // CASO 1: No hay ID local (ej. Limpieza de caché o navegador nuevo tras login previo)
+        // Adoptamos el ID de la DB para mantener la sesión viva.
+        if (!localSessionId && data.lastSessionId) {
+          localStorage.setItem(SESSION_KEY, data.lastSessionId);
+        } 
+        // CASO 2: Conflicto real (Otro dispositivo tomó el mando de la cuenta)
+        else if (localSessionId && data.lastSessionId && localSessionId !== data.lastSessionId) {
+          console.warn("Conflicto de sesión: Acceso desde otro dispositivo detectado.");
+          localStorage.removeItem(SESSION_KEY);
+          sessionStorage.removeItem('mm_security_unlocked');
+          await signOut(auth);
+          window.location.href = '/';
+          return;
         }
       }
+      
+      // Una vez recibimos el primer snapshot válido, permitimos la entrada
+      setIsInitializing(false);
+    }, (error) => {
+      console.error("Error en vigilancia de sesión:", error);
+      setIsInitializing(false);
     });
 
     return () => unsubscribe();
@@ -88,7 +79,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary opacity-50" />
-          <p className="text-sm text-muted-foreground animate-pulse font-medium">Sincronizando sesión segura...</p>
+          <p className="text-sm text-muted-foreground animate-pulse font-medium">Validando integridad de sesión...</p>
         </div>
       </div>
     );

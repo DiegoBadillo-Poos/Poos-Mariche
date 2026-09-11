@@ -36,14 +36,18 @@ export function AuthView() {
 
       const user = userCredential.user;
       
-      // GENERACIÓN DE SESIÓN ÚNICA (SOBREESCRITURA DIRECTA)
+      // GENERACIÓN DE SESIÓN ÚNICA ATÓMICA
       const newSessionId = crypto.randomUUID();
-      sessionStorage.setItem(SESSION_KEY, newSessionId);
+      
+      // 1. Guardamos localmente primero para que el layout lo reconozca de inmediato
+      localStorage.setItem(SESSION_KEY, newSessionId);
 
       const profileRef = doc(firestore, 'users', user.uid);
       const profileSnap = await getDoc(profileRef);
       
-      // Actualizamos Firestore con el nuevo ID de sesión antes de redirigir
+      // 2. Actualizamos Firestore con el nuevo ID de sesión
+      // El layout.tsx detectará este cambio via onSnapshot y lo ignorará localmente 
+      // gracias a metadata.hasPendingWrites.
       await setDoc(profileRef, {
         uid: user.uid,
         email: user.email,
@@ -51,7 +55,7 @@ export function AuthView() {
         updatedAt: new Date().toISOString(),
         ...( !profileSnap.exists() && {
             createdAt: new Date().toISOString(),
-            licenseStatus: 'expired', // Cuentas nuevas nacen suspendidas para activación manual
+            licenseStatus: 'expired',
             enabledModules: ['inventory', 'pos', 'repairs', 'reports', 'expenses', 'analysis', 'fiados', 'inventory_aging', 'loans', 'exchange', 'payroll', 'treasury'],
             lockedModules: [],
             isPinRequired: false,
@@ -60,7 +64,8 @@ export function AuthView() {
         })
       }, { merge: true });
 
-      // El redireccionamiento ocurre por el cambio de estado en RootLayout
+      // No necesitamos redirigir manualmente, el cambio de estado 'user' en useFirebase
+      // disparará el renderizado del Dashboard en layout.tsx.
     } catch (error: any) {
       console.error("Auth error:", error);
       
